@@ -266,4 +266,88 @@ select:focus {
   .ask-row button {
     min-height: 44px;
   }
+.compare-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  cursor: pointer;
+}
+
+.compare-option input {
+  width: auto;
+}
+
+.compare-panel {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid #e4e6ee;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgb(29 35 70 / 6%);
+}
+
+.compare-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compare-heading h3 {
+  margin-bottom: 12px;
+}
+
+.compare-clear-button,
+.feedback-controls button {
+  padding: 8px 12px;
+  border: 1px solid #d9dce7;
+  border-radius: 8px;
+  background: #fff;
+  color: #2d3142;
+  cursor: pointer;
+  font: inherit;
+}
+
+.compare-table-wrapper {
+  overflow-x: auto;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.compare-table th,
+.compare-table td {
+  min-width: 120px;
+  padding: 10px;
+  border-bottom: 1px solid #eceef3;
+  vertical-align: top;
+}
+
+.compare-table th:first-child,
+.compare-table td:first-child {
+  min-width: 110px;
+  color: #626779;
+  font-weight: 700;
+}
+
+.compare-prompt {
+  margin-bottom: 12px;
+  color: #626779;
+}
+
+.compare-option input:focus-visible,
+.compare-clear-button:focus-visible,
+.feedback-controls button:focus-visible {
+  outline: 3px solid rgb(101 107 224 / 25%);
+}
+
+.compare-clear-button:disabled,
+.feedback-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 }
