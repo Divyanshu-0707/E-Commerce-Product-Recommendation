@@ -13,25 +13,31 @@ function formatPrice(price) {
 
 export default function App() {
   const [query, setQuery] = useState("");
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [category, setCategory] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
 
   const [questions, setQuestions] = useState({});
   const [answers, setAnswers] = useState({});
   const [askErrors, setAskErrors] = useState({});
   const [askingId, setAskingId] = useState(null);
+  const [feedbackStates, setFeedbackStates] = useState({});
 
   async function searchProducts(event) {
     event.preventDefault();
     setError("");
     setResults([]);
+    setFeedbackStates({});
+    setHasSearched(true);
+    setSearchedQuery(query.trim());
     setLoading(true);
 
     const body = {
-      query,
+      query: query.trim(),
       category: category || null,
       max_price: maxPrice ? Number(maxPrice) : null,
     };
@@ -99,6 +105,56 @@ export default function App() {
     }
   }
 
+  async function submitFeedback(productId, helpful) {
+    setFeedbackStates((current) => ({
+      ...current,
+      [productId]: {
+        loading: true,
+        submitted: false,
+        message: "",
+        isError: false,
+      },
+    }));
+
+    try {
+      const response = await fetch(`${API_BASE}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: productId,
+          query: searchedQuery,
+          helpful,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Feedback submission failed.");
+      }
+
+      setFeedbackStates((current) => ({
+        ...current,
+        [productId]: {
+          loading: false,
+          submitted: true,
+          message: "Thanks for your feedback.",
+          isError: false,
+        },
+      }));
+    } catch (err) {
+      setFeedbackStates((current) => ({
+        ...current,
+        [productId]: {
+          loading: false,
+          submitted: false,
+          message: err.message,
+          isError: true,
+        },
+      }));
+    }
+  }
+
   return (
     <main className="page">
       <header className="hero">
@@ -158,7 +214,9 @@ export default function App() {
 
       {!loading && results.length === 0 && !error && (
         <p className="empty-message">
-          Enter a search above to see laptop recommendations.
+          {hasSearched
+            ? "No products matched your request. Try changing your search or budget."
+            : "Enter a search above to see laptop recommendations."}
         </p>
       )}
 
@@ -210,6 +268,42 @@ export default function App() {
                     ))}
                   </ul>
                 )}
+
+                <div className="feedback-controls">
+                  <p>Was this recommendation helpful?</p>
+                  <button
+                    type="button"
+                    disabled={
+                      feedbackStates[product.id]?.loading ||
+                      feedbackStates[product.id]?.submitted
+                    }
+                    onClick={() => submitFeedback(product.id, true)}
+                  >
+                    Helpful
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      feedbackStates[product.id]?.loading ||
+                      feedbackStates[product.id]?.submitted
+                    }
+                    onClick={() => submitFeedback(product.id, false)}
+                  >
+                    Not helpful
+                  </button>
+
+                  {feedbackStates[product.id]?.message && (
+                    <p
+                      className={
+                        feedbackStates[product.id].isError
+                          ? "error-message"
+                          : "feedback-message"
+                      }
+                    >
+                      {feedbackStates[product.id].message}
+                    </p>
+                  )}
+                </div>
 
                 <form
                   className="ask-form"
