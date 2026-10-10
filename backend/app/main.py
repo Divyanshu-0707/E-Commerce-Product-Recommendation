@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.catalog import Product, load_products
 from app.embeddings import ProductEmbeddingModel
+from app.feedback import FeedbackRequest, record_feedback
 from app.qa import AskRequest, AskResponse, answer_question
 from app.recommendation import (
     RecommendRequest,
@@ -114,3 +115,20 @@ def ask(body: AskRequest, request: Request):
         )
 
     return {"answer": answer_question(product, body.question)}
+
+
+@app.post("/feedback")
+def submit_feedback(body: FeedbackRequest, request: Request):
+    product_exists = any(
+        product.id == body.product_id
+        for product in request.app.state.products
+    )
+
+    if not product_exists:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product with id {body.product_id!r} was not found.",
+        )
+
+    record_feedback(body)
+    return {"status": "recorded"}
