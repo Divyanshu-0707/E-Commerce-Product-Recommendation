@@ -61,7 +61,7 @@ def health():
 
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(body: RecommendRequest, request: Request):
-    filters = resolve_filters(body)
+    filters = resolve_filters(body, request.app.state.products)
     query_embedding = request.app.state.embedding_model.embed_query(body.query)
 
     ranked = rank_products(
