@@ -68,7 +68,7 @@ def recommend(body: RecommendRequest, request: Request):
         products=request.app.state.products,
         product_embeddings=request.app.state.product_embeddings,
         query_embedding=query_embedding,
-	query=body.query,
+        query=body.query,
         filters=filters,
         limit=10,
     )
@@ -83,6 +83,12 @@ def recommend(body: RecommendRequest, request: Request):
                     query=body.query,
                     category=filters.category,
                     max_price=filters.max_price,
+                    product_type=filters.product_type,
+                    condition=filters.condition,
+                    brand=filters.brand,
+                    max_weight_kg=filters.max_weight_kg,
+                    min_ram_gb=filters.min_ram_gb,
+                    min_storage_gb=filters.min_storage_gb,
                 ),
             }
             for product, score in ranked
