@@ -8,6 +8,8 @@ EXPECTED_COLUMNS = [
     "id",
     "title",
     "category",
+    "product_type",
+    "condition",
     "brand",
     "price",
     "description",
@@ -24,6 +26,8 @@ class Product(BaseModel):
     id: str
     title: str
     category: str
+    product_type: str | None
+    condition: str | None
     brand: str | None
     price: float = Field(ge=0, allow_inf_nan=False)
     description: str
@@ -104,14 +108,13 @@ def load_products(path: Path = CATALOG_PATH) -> list[Product]:
                         f"Row {row_number}: required field {required!r} is blank"
                     )
 
-            if not item["description"]:
-                item["description"] = ""
-
             if not item["price"]:
                 raise ValueError(f"Row {row_number}: required field 'price' is blank")
 
             try:
                 item["price"] = float(item["price"])
+                item["product_type"] = _optional_text(item["product_type"])
+                item["condition"] = _optional_text(item["condition"])
                 item["brand"] = _optional_text(item["brand"])
                 item["processor"] = _optional_text(item["processor"])
                 item["weight_kg"] = _optional_float(

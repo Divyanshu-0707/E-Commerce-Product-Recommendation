@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.catalog import Product, load_products
 from app.embeddings import ProductEmbeddingModel
+from app.feedback import FeedbackRequest, record_feedback
 from app.qa import AskRequest, AskResponse, answer_question
 from app.recommendation import (
     RecommendRequest,
@@ -41,6 +42,7 @@ app = FastAPI(
     title="AI E-Commerce Product Recommendation Assistant",
     lifespan=lifespan,
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -60,15 +62,15 @@ def health():
 
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(body: RecommendRequest, request: Request):
-    category, max_price = resolve_filters(body)
+    filters = resolve_filters(body, request.app.state.products)
     query_embedding = request.app.state.embedding_model.embed_query(body.query)
 
     ranked = rank_products(
         products=request.app.state.products,
         product_embeddings=request.app.state.product_embeddings,
         query_embedding=query_embedding,
-        category=category,
-        max_price=max_price,
+        query=body.query,
+        filters=filters,
         limit=10,
     )
 
@@ -80,8 +82,14 @@ def recommend(body: RecommendRequest, request: Request):
                 "reasons": build_reasons(
                     product=product,
                     query=body.query,
-                    category=category,
-                    max_price=max_price,
+                    category=filters.category,
+                    max_price=filters.max_price,
+                    product_type=filters.product_type,
+                    condition=filters.condition,
+                    brand=filters.brand,
+                    max_weight_kg=filters.max_weight_kg,
+                    min_ram_gb=filters.min_ram_gb,
+                    min_storage_gb=filters.min_storage_gb,
                 ),
             }
             for product, score in ranked
@@ -107,3 +115,20 @@ def ask(body: AskRequest, request: Request):
         )
 
     return {"answer": answer_question(product, body.question)}
+
+
+@app.post("/feedback")
+def submit_feedback(body: FeedbackRequest, request: Request):
+    product_exists = any(
+        product.id == body.product_id
+        for product in request.app.state.products
+    )
+
+    if not product_exists:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product with id {body.product_id!r} was not found.",
+        )
+
+    record_feedback(body)
+    return {"status": "recorded"}

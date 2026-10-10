@@ -13,25 +13,56 @@ function formatPrice(price) {
 
 export default function App() {
   const [query, setQuery] = useState("");
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [category, setCategory] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
 
   const [questions, setQuestions] = useState({});
   const [answers, setAnswers] = useState({});
   const [askErrors, setAskErrors] = useState({});
   const [askingId, setAskingId] = useState(null);
+  const [feedbackStates, setFeedbackStates] = useState({});
+  const [selectedForCompare, setSelectedForCompare] = useState([]);
+
+  const comparisonRows = [
+    ["Brand", (product) => product.brand || "Not listed"],
+    ["Product type", (product) => product.product_type || "Not listed"],
+    ["Condition", (product) => product.condition || "Not listed"],
+    ["Price", (product) => formatPrice(product.price)],
+    ["Processor", (product) => product.processor || "Not listed"],
+    [
+      "RAM",
+      (product) =>
+        product.ram_gb != null ? `${product.ram_gb} GB` : "Not listed",
+    ],
+    [
+      "Storage",
+      (product) =>
+        product.storage_gb != null ? `${product.storage_gb} GB` : "Not listed",
+    ],
+    [
+      "Weight",
+      (product) =>
+        product.weight_kg != null ? `${product.weight_kg} kg` : "Not listed",
+    ],
+  ];
 
   async function searchProducts(event) {
     event.preventDefault();
     setError("");
     setResults([]);
+    setFeedbackStates({});
+    setSelectedForCompare([]);
+    setHasSearched(true);
+    setSearchedQuery(query.trim());
     setLoading(true);
 
     const body = {
-      query,
+      query: query.trim(),
       category: category || null,
       max_price: maxPrice ? Number(maxPrice) : null,
     };
@@ -99,6 +130,73 @@ export default function App() {
     }
   }
 
+  async function submitFeedback(productId, helpful) {
+    setFeedbackStates((current) => ({
+      ...current,
+      [productId]: {
+        loading: true,
+        submitted: false,
+        message: "",
+        isError: false,
+      },
+    }));
+
+    try {
+      const response = await fetch(`${API_BASE}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: productId,
+          query: searchedQuery,
+          helpful,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Feedback submission failed.");
+      }
+
+      setFeedbackStates((current) => ({
+        ...current,
+        [productId]: {
+          loading: false,
+          submitted: true,
+          message: "Thanks for your feedback.",
+          isError: false,
+        },
+      }));
+    } catch (err) {
+      setFeedbackStates((current) => ({
+        ...current,
+        [productId]: {
+          loading: false,
+          submitted: false,
+          message: err.message,
+          isError: true,
+        },
+      }));
+    }
+  }
+
+  function toggleCompare(product) {
+    const alreadySelected = selectedForCompare.some(
+      (item) => item.id === product.id
+    );
+
+    if (alreadySelected) {
+      setSelectedForCompare((current) =>
+        current.filter((item) => item.id !== product.id)
+      );
+      return;
+    }
+
+    if (selectedForCompare.length < 2) {
+      setSelectedForCompare((current) => [...current, product]);
+    }
+  }
+
   return (
     <main className="page">
       <header className="hero">
@@ -158,7 +256,9 @@ export default function App() {
 
       {!loading && results.length === 0 && !error && (
         <p className="empty-message">
-          Enter a search above to see laptop recommendations.
+          {hasSearched
+            ? "No products matched your request. Try changing your search or budget."
+            : "Enter a search above to see laptop recommendations."}
         </p>
       )}
 
@@ -171,82 +271,188 @@ export default function App() {
             </div>
           </div>
 
-          <div className="product-list">
-            {results.map(({ product, score, reasons }) => (
-              <article className="product-card" key={product.id}>
-                <div className="product-topline">
-                  <div>
-                    <p className="product-brand">{product.brand || "Laptop"}</p>
-                    <h3>{product.title}</h3>
-                  </div>
-                  <p className="price">{formatPrice(product.price)}</p>
-                </div>
-
-                <p className="description">{product.description}</p>
-
-                <div className="specs">
-                  {product.processor && <span>{product.processor}</span>}
-                  {product.ram_gb != null && (
-                    <span>{product.ram_gb} GB RAM</span>
-                  )}
-                  {product.storage_gb != null && (
-                    <span>{product.storage_gb} GB storage</span>
-                  )}
-                  {product.weight_kg != null && (
-                    <span>{product.weight_kg} kg</span>
-                  )}
-                </div>
-
-                <div className="match-row">
-                  <span className="score">
-                    Match score: {Number(score).toFixed(2)}
-                  </span>
-                </div>
-
-                {reasons?.length > 0 && (
-                  <ul className="reasons">
-                    {reasons.map((reason, index) => (
-                      <li key={`${product.id}-reason-${index}`}>{reason}</li>
-                    ))}
-                  </ul>
-                )}
-
-                <form
-                  className="ask-form"
-                  onSubmit={(event) => askAboutProduct(event, product.id)}
+          {selectedForCompare.length > 0 && (
+            <section className="compare-panel">
+              <div className="compare-heading">
+                <h3>Compare selected laptops</h3>
+                <button
+                  className="compare-clear-button"
+                  type="button"
+                  onClick={() => setSelectedForCompare([])}
                 >
-                  <label htmlFor={`question-${product.id}`}>
-                    Ask about this laptop
-                  </label>
-                  <div className="ask-row">
-                    <input
-                      id={`question-${product.id}`}
-                      value={questions[product.id] || ""}
-                      onChange={(event) =>
-                        setQuestions((current) => ({
-                          ...current,
-                          [product.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="How much RAM does it have?"
-                    />
-                    <button
-                      type="submit"
-                      disabled={askingId === product.id}
-                    >
-                      {askingId === product.id ? "Asking…" : "Ask"}
-                    </button>
+                  Clear comparison
+                </button>
+              </div>
+
+              <p className="compare-prompt">
+                {selectedForCompare.length === 1
+                  ? "Select one more laptop to compare side by side."
+                  : "Comparing 2 laptops."}
+              </p>
+
+              <div className="compare-table-wrapper">
+                <table className="compare-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Specification</th>
+                      {selectedForCompare.map((product) => (
+                        <th scope="col" key={product.id}>
+                          {product.title}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparisonRows.map(([label, getValue]) => (
+                      <tr key={label}>
+                        <th scope="row">{label}</th>
+                        {selectedForCompare.map((product) => (
+                          <td key={`${product.id}-${label}`}>
+                            {getValue(product)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          <div className="product-list">
+            {results.map(({ product, score, reasons }) => {
+              const isSelected = selectedForCompare.some(
+                (item) => item.id === product.id
+              );
+
+              return (
+                <article className="product-card" key={product.id}>
+                  <div className="product-topline">
+                    <div>
+                      <p className="product-brand">
+                        {product.brand || "Laptop"}
+                      </p>
+                      <h3>{product.title}</h3>
+                    </div>
+                    <p className="price">{formatPrice(product.price)}</p>
                   </div>
 
-                  {answers[product.id] && (
-                    <p className="answer">{answers[product.id]}</p>
+                  <p className="description">{product.description}</p>
+
+                  <div className="specs">
+                    {product.processor && <span>{product.processor}</span>}
+                    {product.ram_gb != null && (
+                      <span>{product.ram_gb} GB RAM</span>
+                    )}
+                    {product.storage_gb != null && (
+                      <span>{product.storage_gb} GB storage</span>
+                    )}
+                    {product.weight_kg != null && (
+                      <span>{product.weight_kg} kg</span>
+                    )}
+                  </div>
+
+                  <div className="match-row">
+                    <span className="score">
+                      Match score: {Number(score).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <label className="compare-option">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={
+                        !isSelected && selectedForCompare.length >= 2
+                      }
+                      onChange={() => toggleCompare(product)}
+                    />
+                    Compare this laptop
+                  </label>
+
+                  {reasons?.length > 0 && (
+                    <ul className="reasons">
+                      {reasons.map((reason, index) => (
+                        <li key={`${product.id}-reason-${index}`}>{reason}</li>
+                      ))}
+                    </ul>
                   )}
-                  {askErrors[product.id] && (
-                    <p className="error-message">{askErrors[product.id]}</p>
-                  )}
-                </form>
-              </article>
-            ))}
+
+                  <div className="feedback-controls">
+                    <p>Was this recommendation helpful?</p>
+                    <button
+                      type="button"
+                      disabled={
+                        feedbackStates[product.id]?.loading ||
+                        feedbackStates[product.id]?.submitted
+                      }
+                      onClick={() => submitFeedback(product.id, true)}
+                    >
+                      Helpful
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        feedbackStates[product.id]?.loading ||
+                        feedbackStates[product.id]?.submitted
+                      }
+                      onClick={() => submitFeedback(product.id, false)}
+                    >
+                      Not helpful
+                    </button>
+
+                    {feedbackStates[product.id]?.message && (
+                      <p
+                        className={
+                          feedbackStates[product.id].isError
+                            ? "error-message"
+                            : "feedback-message"
+                        }
+                      >
+                        {feedbackStates[product.id].message}
+                      </p>
+                    )}
+                  </div>
+
+                  <form
+                    className="ask-form"
+                    onSubmit={(event) => askAboutProduct(event, product.id)}
+                  >
+                    <label htmlFor={`question-${product.id}`}>
+                      Ask about this laptop
+                    </label>
+                    <div className="ask-row">
+                      <input
+                        id={`question-${product.id}`}
+                        value={questions[product.id] || ""}
+                        onChange={(event) =>
+                          setQuestions((current) => ({
+                            ...current,
+                            [product.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="How much RAM does it have?"
+                      />
+                      <button
+                        type="submit"
+                        disabled={askingId === product.id}
+                      >
+                        {askingId === product.id ? "Asking…" : "Ask"}
+                      </button>
+                    </div>
+
+                    {answers[product.id] && (
+                      <p className="answer">{answers[product.id]}</p>
+                    )}
+                    {askErrors[product.id] && (
+                      <p className="error-message">
+                        {askErrors[product.id]}
+                      </p>
+                    )}
+                  </form>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
