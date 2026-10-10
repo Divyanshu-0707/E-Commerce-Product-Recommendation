@@ -1,6 +1,15 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from openai import OpenAI
 from pydantic import BaseModel, field_validator
 
 from app.catalog import Product
+
+
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(ENV_FILE)
 
 
 class AskRequest(BaseModel):
@@ -20,82 +29,36 @@ class AskResponse(BaseModel):
     answer: str
 
 
-def _description_matches(product: Product, keywords: tuple[str, ...]) -> str | None:
-    parts = [
-        part.strip()
-        for part in product.description.split(";")
-        if part.strip()
-    ]
-    matches = [
-        part
-        for part in parts
-        if any(keyword in part.casefold() for keyword in keywords)
-    ]
-    return "; ".join(matches) if matches else None
-
-
 def answer_question(product: Product, question: str) -> str:
-    q = question.casefold()
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GROQ_API_KEY is missing. Add it to backend/.env and restart the backend."
+        )
 
-    if "ram" in q or "memory" in q:
-        if product.ram_gb is not None:
-            return f"It has {product.ram_gb} GB of RAM."
-        return "The catalog does not provide the RAM for this product."
+    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
-    if "storage" in q or "ssd" in q or "hard drive" in q:
-        if "ssd" in q:
-            detail = _description_matches(product, ("ssd", "storage type"))
-            if detail:
-                return detail
-            return "The catalog does not specify whether this product has an SSD."
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.groq.com/openai/v1",
+    )
 
-        if product.storage_gb is not None:
-            return f"It has {product.storage_gb} GB of storage."
-        return "The catalog does not provide the storage capacity for this product."
+    response = client.responses.create(
+        model=model,
+        instructions=(
+            "You are a helpful shopping assistant. Answer the customer's question "
+            "using only the product catalog data provided. Do not guess or add "
+            "outside facts. If the data does not contain the answer, say that the "
+            "catalog does not provide that information. Keep the answer concise."
+        ),
+        input=(
+            f"Product catalog data:\n{product.model_dump_json()}\n\n"
+            f"Customer question:\n{question}"
+        ),
+    )
 
-    if "price" in q or "cost" in q or "how much" in q:
-        return f"The listed price is ₹{product.price:,.2f}."
+    answer = response.output_text.strip()
+    if not answer:
+        return "The catalog does not provide that information for this product."
 
-    if "brand" in q or "manufacturer" in q:
-        if product.brand:
-            return f"The brand is {product.brand}."
-        return "The catalog does not provide the brand for this product."
-
-    if "processor" in q or "cpu" in q:
-        if product.processor:
-            return f"The processor is {product.processor}."
-        return "The catalog does not provide the processor for this product."
-
-    if "weight" in q or "heavy" in q or "lightweight" in q or "portable" in q:
-        if product.weight_kg is not None:
-            return f"It weighs {product.weight_kg:g} kg."
-        return "The catalog does not provide the weight for this product."
-
-    if "screen" in q or "display" in q or "resolution" in q:
-        detail = _description_matches(product, ("screen", "display", "resolution"))
-        if detail:
-            return detail
-        return "The catalog does not provide display details for this product."
-
-    if "gpu" in q or "graphics" in q:
-        detail = _description_matches(product, ("gpu", "graphics"))
-        if detail:
-            return detail
-        return "The catalog does not provide graphics details for this product."
-
-    if "operating system" in q or " os " in f" {q} ":
-        detail = _description_matches(product, ("operating system", "os:"))
-        if detail:
-            return detail
-        return "The catalog does not provide the operating system for this product."
-
-    if "category" in q or "type" in q:
-        return f"The catalog lists it as a {product.category}."
-
-    if "title" in q or "name" in q or "model" in q:
-        return f"The product is {product.title}."
-
-    if "battery" in q:
-        return "The catalog does not provide battery information for this product."
-
-    return "The catalog does not provide that information for this product."
+    return answer
