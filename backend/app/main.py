@@ -68,6 +68,7 @@ def recommend(body: RecommendRequest, request: Request):
         products=request.app.state.products,
         product_embeddings=request.app.state.product_embeddings,
         query_embedding=query_embedding,
+	query=body.query,
         filters=filters,
         limit=10,
     )

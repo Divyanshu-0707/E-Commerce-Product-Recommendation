@@ -76,6 +76,14 @@ TYPE_ALIASES = {
     "2 in 1 convertible": ("2 in 1 convertible", "2 in 1", "2-in-1"),
 }
 
+LEXICAL_STOP_WORDS = {
+    "a", "an", "the", "for", "with", "and", "of", "in",
+    "under", "below", "less", "than", "at", "most", "up",
+    "to", "within", "budget", "maximum", "max", "laptop",
+    "laptops", "kg", "kilogram", "kilograms", "gb", "tb",
+    "ram", "memory", "storage", "ssd", "price",
+}
+
 
 def _normalized_phrase(value: str) -> str:
     return re.sub(r"[\s-]+", " ", value.casefold()).strip()
@@ -100,7 +108,7 @@ def extract_max_price(query: str) -> float | None:
     if not match:
         return None
 
-    # Do not read a weight or storage number as a price.
+    # Avoid treating a weight or storage number as a price.
     remainder = query[match.end():]
     if re.match(r"\s*(?:kg|kilograms?|g|gb|tb)\b", remainder, re.IGNORECASE):
         return None
@@ -151,7 +159,9 @@ def resolve_filters(
     product_types = {
         product.product_type for product in products if product.product_type
     }
-    conditions = {product.condition for product in products if product.condition}
+    conditions = {
+        product.condition for product in products if product.condition
+    }
     brands = {product.brand for product in products if product.brand}
 
     category = request.category
@@ -200,14 +210,41 @@ def resolve_filters(
     )
 
 
+def lexical_match_score(query: str, product: Product) -> float:
+    query_terms = {
+        token
+        for token in re.findall(r"[a-z]+", query.casefold())
+        if token not in LEXICAL_STOP_WORDS
+    }
+    if not query_terms:
+        return 0.0
+
+    product_text = " ".join(
+        str(value or "")
+        for value in (
+            product.title,
+            product.category,
+            product.product_type,
+            product.condition,
+            product.brand,
+            product.description,
+            product.processor,
+        )
+    ).casefold()
+
+    product_terms = set(re.findall(r"[a-z]+", product_text))
+    return len(query_terms & product_terms) / len(query_terms)
+
+
 def rank_products(
     products: list[Product],
     product_embeddings: np.ndarray,
     query_embedding: np.ndarray,
+    query: str,
     filters: ResolvedFilters,
     limit: int = 10,
 ) -> list[tuple[Product, float]]:
-    # Apply every exact filter before semantic ranking.
+    # Apply exact filters before ranking eligible products.
     eligible_indices = []
 
     for index, product in enumerate(products):
@@ -228,7 +265,7 @@ def rank_products(
         if filters.max_price is not None and product.price > filters.max_price:
             continue
 
-        # Unknown measurements cannot satisfy a numeric hard filter.
+        # Unknown measurements cannot satisfy a numeric filter.
         if filters.max_weight_kg is not None:
             if product.weight_kg is None or product.weight_kg > filters.max_weight_kg:
                 continue
@@ -245,13 +282,26 @@ def rank_products(
         return []
 
     eligible_vectors = product_embeddings[eligible_indices]
-    similarities = eligible_vectors @ query_embedding
-    ranked_positions = np.argsort(-similarities)[:limit]
+    semantic_scores = eligible_vectors @ query_embedding
+
+    lexical_scores = np.array(
+        [
+            lexical_match_score(query, products[index])
+            for index in eligible_indices
+        ]
+    )
+
+    # Blend semantic meaning with exact keyword overlap.
+    hybrid_scores = (
+        0.8 * np.clip(semantic_scores, 0.0, 1.0)
+        + 0.2 * lexical_scores
+    )
+    ranked_positions = np.argsort(-hybrid_scores)[:limit]
 
     return [
         (
             products[eligible_indices[position]],
-            max(0.0, min(1.0, float(similarities[position]))),
+            float(hybrid_scores[position]),
         )
         for position in ranked_positions
     ]
