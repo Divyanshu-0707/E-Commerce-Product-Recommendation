@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.catalog import Product, load_products
 from app.embeddings import ProductEmbeddingModel
@@ -41,6 +41,7 @@ app = FastAPI(
     title="AI E-Commerce Product Recommendation Assistant",
     lifespan=lifespan,
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -60,15 +61,14 @@ def health():
 
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(body: RecommendRequest, request: Request):
-    category, max_price = resolve_filters(body)
+    filters = resolve_filters(body)
     query_embedding = request.app.state.embedding_model.embed_query(body.query)
 
     ranked = rank_products(
         products=request.app.state.products,
         product_embeddings=request.app.state.product_embeddings,
         query_embedding=query_embedding,
-        category=category,
-        max_price=max_price,
+        filters=filters,
         limit=10,
     )
 
@@ -80,8 +80,8 @@ def recommend(body: RecommendRequest, request: Request):
                 "reasons": build_reasons(
                     product=product,
                     query=body.query,
-                    category=category,
-                    max_price=max_price,
+                    category=filters.category,
+                    max_price=filters.max_price,
                 ),
             }
             for product, score in ranked

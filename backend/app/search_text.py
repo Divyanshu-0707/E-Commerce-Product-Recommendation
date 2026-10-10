@@ -8,6 +8,12 @@ def build_product_text(product: Product) -> str:
         f"Category: {product.category}",
     ]
 
+    if product.product_type:
+        parts.append(f"Product type: {product.product_type}")
+
+    if product.condition:
+        parts.append(f"Condition: {product.condition}")
+
     if product.brand:
         parts.append(f"Brand: {product.brand}")
 

@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
@@ -9,7 +10,13 @@ from app.catalog import Product
 class RecommendRequest(BaseModel):
     query: str
     category: str | None = None
+    product_type: str | None = None
+    condition: str | None = None
+    brand: str | None = None
     max_price: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    max_weight_kg: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    min_ram_gb: int | None = Field(default=None, ge=0)
+    min_storage_gb: int | None = Field(default=None, ge=0)
 
     @field_validator("query")
     @classmethod
@@ -19,12 +26,24 @@ class RecommendRequest(BaseModel):
             raise ValueError("query must not be blank")
         return value
 
-    @field_validator("category")
+    @field_validator("category", "product_type", "condition", "brand")
     @classmethod
-    def normalize_category(cls, value: str | None) -> str | None:
+    def normalize_text_filters(cls, value: str | None) -> str | None:
         if value is None or not value.strip():
             return None
         return value.strip().casefold()
+
+
+@dataclass(frozen=True)
+class ResolvedFilters:
+    category: str | None
+    product_type: str | None
+    condition: str | None
+    brand: str | None
+    max_price: float | None
+    max_weight_kg: float | None
+    min_ram_gb: int | None
+    min_storage_gb: int | None
 
 
 PRICE_PATTERN = re.compile(
@@ -51,42 +70,75 @@ def extract_max_price(query: str) -> float | None:
     return amount
 
 
-def resolve_filters(
-    request: RecommendRequest,
-) -> tuple[str | None, float | None]:
+def resolve_filters(request: RecommendRequest) -> ResolvedFilters:
+    query_lower = request.query.casefold()
+
     category = request.category
-    if category is None and re.search(r"\blaptops?\b", request.query, re.IGNORECASE):
+    if category is None and re.search(r"\blaptops?\b", query_lower):
         category = "laptop"
 
     max_price = request.max_price
     if max_price is None:
         max_price = extract_max_price(request.query)
 
-    return category, max_price
+    return ResolvedFilters(
+        category=category,
+        product_type=request.product_type,
+        condition=request.condition,
+        brand=request.brand,
+        max_price=max_price,
+        max_weight_kg=request.max_weight_kg,
+        min_ram_gb=request.min_ram_gb,
+        min_storage_gb=request.min_storage_gb,
+    )
 
 
 def rank_products(
     products: list[Product],
     product_embeddings: np.ndarray,
     query_embedding: np.ndarray,
-    category: str | None,
-    max_price: float | None,
+    filters: ResolvedFilters,
     limit: int = 10,
 ) -> list[tuple[Product, float]]:
-    # Apply exact filters first. Only eligible products are semantically ranked.
-    eligible_indices = [
-        index
-        for index, product in enumerate(products)
-        if (category is None or product.category.casefold() == category)
-        and (max_price is None or product.price <= max_price)
-    ]
+    # Apply every exact filter before semantic ranking.
+    eligible_indices = []
+
+    for index, product in enumerate(products):
+        if filters.category and product.category.casefold() != filters.category:
+            continue
+        if (
+            filters.product_type
+            and (product.product_type or "").casefold() != filters.product_type
+        ):
+            continue
+        if (
+            filters.condition
+            and (product.condition or "").casefold() != filters.condition
+        ):
+            continue
+        if filters.brand and (product.brand or "").casefold() != filters.brand:
+            continue
+        if filters.max_price is not None and product.price > filters.max_price:
+            continue
+
+        # Unknown measurements cannot satisfy a numeric hard filter.
+        if filters.max_weight_kg is not None:
+            if product.weight_kg is None or product.weight_kg > filters.max_weight_kg:
+                continue
+        if filters.min_ram_gb is not None:
+            if product.ram_gb is None or product.ram_gb < filters.min_ram_gb:
+                continue
+        if filters.min_storage_gb is not None:
+            if product.storage_gb is None or product.storage_gb < filters.min_storage_gb:
+                continue
+
+        eligible_indices.append(index)
 
     if not eligible_indices:
         return []
 
     eligible_vectors = product_embeddings[eligible_indices]
     similarities = eligible_vectors @ query_embedding
-
     ranked_positions = np.argsort(-similarities)[:limit]
 
     return [
