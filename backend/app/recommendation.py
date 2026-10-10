@@ -1,5 +1,6 @@
 import re
 
+import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
 from app.catalog import Product
@@ -42,9 +43,7 @@ def extract_max_price(query: str) -> float | None:
     amount = float(match.group(1).replace(",", ""))
     unit = (match.group(2) or "").casefold()
 
-    if unit == "k":
-        amount *= 1_000
-    elif unit == "thousand":
+    if unit in {"k", "thousand"}:
         amount *= 1_000
     elif unit in {"lakh", "lac"}:
         amount *= 100_000
@@ -55,14 +54,10 @@ def extract_max_price(query: str) -> float | None:
 def resolve_filters(
     request: RecommendRequest,
 ) -> tuple[str | None, float | None]:
-    query_lower = request.query.casefold()
-
-    # An explicitly supplied category takes priority over query extraction.
     category = request.category
-    if category is None and re.search(r"\blaptops?\b", query_lower):
+    if category is None and re.search(r"\blaptops?\b", request.query, re.IGNORECASE):
         category = "laptop"
 
-    # An explicitly supplied maximum price takes priority over query extraction.
     max_price = request.max_price
     if max_price is None:
         max_price = extract_max_price(request.query)
@@ -70,23 +65,34 @@ def resolve_filters(
     return category, max_price
 
 
-def filter_products(
+def rank_products(
     products: list[Product],
+    product_embeddings: np.ndarray,
+    query_embedding: np.ndarray,
     category: str | None,
     max_price: float | None,
-) -> list[Product]:
-    eligible = products
+    limit: int = 10,
+) -> list[tuple[Product, float]]:
+    # Apply exact filters first. Only eligible products are semantically ranked.
+    eligible_indices = [
+        index
+        for index, product in enumerate(products)
+        if (category is None or product.category.casefold() == category)
+        and (max_price is None or product.price <= max_price)
+    ]
 
-    if category is not None:
-        eligible = [
-            product
-            for product in eligible
-            if product.category.casefold() == category
-        ]
+    if not eligible_indices:
+        return []
 
-    if max_price is not None:
-        eligible = [
-            product for product in eligible if product.price <= max_price
-        ]
+    eligible_vectors = product_embeddings[eligible_indices]
+    similarities = eligible_vectors @ query_embedding
 
-    return eligible
+    ranked_positions = np.argsort(-similarities)[:limit]
+
+    return [
+        (
+            products[eligible_indices[position]],
+            max(0.0, min(1.0, float(similarities[position]))),
+        )
+        for position in ranked_positions
+    ]

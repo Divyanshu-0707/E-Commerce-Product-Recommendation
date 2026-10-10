@@ -1,14 +1,32 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.catalog import load_products
+from app.catalog import Product, load_products
 from app.embeddings import ProductEmbeddingModel
+from app.qa import AskRequest, AskResponse, answer_question
+from app.recommendation import (
+    RecommendRequest,
+    rank_products,
+    resolve_filters,
+)
+from app.reasons import build_reasons
+
+
+class RecommendationItem(BaseModel):
+    product: Product
+    score: float
+    reasons: list[str]
+
+
+class RecommendResponse(BaseModel):
+    results: list[RecommendationItem]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load the catalog and create product embeddings once at startup.
     app.state.products = load_products()
     app.state.embedding_model = ProductEmbeddingModel()
     app.state.product_embeddings = app.state.embedding_model.embed_products(
@@ -23,8 +41,69 @@ app = FastAPI(
     title="AI E-Commerce Product Recommendation Assistant",
     lifespan=lifespan,
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/recommend", response_model=RecommendResponse)
+def recommend(body: RecommendRequest, request: Request):
+    category, max_price = resolve_filters(body)
+    query_embedding = request.app.state.embedding_model.embed_query(body.query)
+
+    ranked = rank_products(
+        products=request.app.state.products,
+        product_embeddings=request.app.state.product_embeddings,
+        query_embedding=query_embedding,
+        category=category,
+        max_price=max_price,
+        limit=10,
+    )
+
+    return {
+        "results": [
+            {
+                "product": product,
+                "score": score,
+                "reasons": build_reasons(
+                    product=product,
+                    query=body.query,
+                    category=category,
+                    max_price=max_price,
+                ),
+            }
+            for product, score in ranked
+        ]
+    }
+
+
+@app.post("/ask", response_model=AskResponse)
+def ask(body: AskRequest, request: Request):
+    product = next(
+        (
+            item
+            for item in request.app.state.products
+            if item.id == body.product_id
+        ),
+        None,
+    )
+
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product with id {body.product_id!r} was not found.",
+        )
+
+    return {"answer": answer_question(product, body.question)}

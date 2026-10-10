@@ -1,122 +1,255 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+const API_BASE = "http://127.0.0.1:8000";
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function formatPrice(price) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(price);
 }
 
-export default App
+export default function App() {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [questions, setQuestions] = useState({});
+  const [answers, setAnswers] = useState({});
+  const [askErrors, setAskErrors] = useState({});
+  const [askingId, setAskingId] = useState(null);
+
+  async function searchProducts(event) {
+    event.preventDefault();
+    setError("");
+    setResults([]);
+    setLoading(true);
+
+    const body = {
+      query,
+      category: category || null,
+      max_price: maxPrice ? Number(maxPrice) : null,
+    };
+
+    try {
+      const response = await fetch(`${API_BASE}/recommend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Search request failed.");
+      }
+
+      setResults(data.results);
+    } catch (err) {
+      setError(
+        `${err.message} Check that the backend is running at ${API_BASE}.`
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function askAboutProduct(event, productId) {
+    event.preventDefault();
+    setAskErrors((current) => ({ ...current, [productId]: "" }));
+    setAnswers((current) => ({ ...current, [productId]: "" }));
+
+    const question = (questions[productId] || "").trim();
+    if (!question) {
+      setAskErrors((current) => ({
+        ...current,
+        [productId]: "Enter a question first.",
+      }));
+      return;
+    }
+
+    setAskingId(productId);
+
+    try {
+      const response = await fetch(`${API_BASE}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId, question }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Question request failed.");
+      }
+
+      setAnswers((current) => ({ ...current, [productId]: data.answer }));
+    } catch (err) {
+      setAskErrors((current) => ({
+        ...current,
+        [productId]: err.message,
+      }));
+    } finally {
+      setAskingId(null);
+    }
+  }
+
+  return (
+    <main className="page">
+      <header className="hero">
+        <p className="eyebrow">AI SHOPPING ASSISTANT</p>
+        <h1>Find a laptop that fits your needs.</h1>
+        <p className="intro">
+          Describe what you need. Recommendations follow your budget and use
+          product details from the catalog.
+        </p>
+      </header>
+
+      <section className="search-panel">
+        <form onSubmit={searchProducts}>
+          <label htmlFor="query">What are you looking for?</label>
+          <textarea
+            id="query"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Example: lightweight laptop for programming under 80000"
+            required
+            rows={3}
+          />
+
+          <div className="filters">
+            <div>
+              <label htmlFor="category">Category</label>
+              <select
+                id="category"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              >
+                <option value="">Any category</option>
+                <option value="laptop">Laptop</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="maxPrice">Maximum price (₹)</label>
+              <input
+                id="maxPrice"
+                type="number"
+                min="0"
+                value={maxPrice}
+                onChange={(event) => setMaxPrice(event.target.value)}
+                placeholder="e.g. 80000"
+              />
+            </div>
+          </div>
+
+          <button className="primary-button" type="submit" disabled={loading}>
+            {loading ? "Searching…" : "Find recommendations"}
+          </button>
+        </form>
+      </section>
+
+      {error && <p className="error-message">{error}</p>}
+
+      {!loading && results.length === 0 && !error && (
+        <p className="empty-message">
+          Enter a search above to see laptop recommendations.
+        </p>
+      )}
+
+      {results.length > 0 && (
+        <section className="results-section">
+          <div className="results-heading">
+            <div>
+              <p className="eyebrow">YOUR MATCHES</p>
+              <h2>{results.length} recommendations</h2>
+            </div>
+          </div>
+
+          <div className="product-list">
+            {results.map(({ product, score, reasons }) => (
+              <article className="product-card" key={product.id}>
+                <div className="product-topline">
+                  <div>
+                    <p className="product-brand">{product.brand || "Laptop"}</p>
+                    <h3>{product.title}</h3>
+                  </div>
+                  <p className="price">{formatPrice(product.price)}</p>
+                </div>
+
+                <p className="description">{product.description}</p>
+
+                <div className="specs">
+                  {product.processor && <span>{product.processor}</span>}
+                  {product.ram_gb != null && (
+                    <span>{product.ram_gb} GB RAM</span>
+                  )}
+                  {product.storage_gb != null && (
+                    <span>{product.storage_gb} GB storage</span>
+                  )}
+                  {product.weight_kg != null && (
+                    <span>{product.weight_kg} kg</span>
+                  )}
+                </div>
+
+                <div className="match-row">
+                  <span className="score">
+                    Match score: {Number(score).toFixed(2)}
+                  </span>
+                </div>
+
+                {reasons?.length > 0 && (
+                  <ul className="reasons">
+                    {reasons.map((reason, index) => (
+                      <li key={`${product.id}-reason-${index}`}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+
+                <form
+                  className="ask-form"
+                  onSubmit={(event) => askAboutProduct(event, product.id)}
+                >
+                  <label htmlFor={`question-${product.id}`}>
+                    Ask about this laptop
+                  </label>
+                  <div className="ask-row">
+                    <input
+                      id={`question-${product.id}`}
+                      value={questions[product.id] || ""}
+                      onChange={(event) =>
+                        setQuestions((current) => ({
+                          ...current,
+                          [product.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="How much RAM does it have?"
+                    />
+                    <button
+                      type="submit"
+                      disabled={askingId === product.id}
+                    >
+                      {askingId === product.id ? "Asking…" : "Ask"}
+                    </button>
+                  </div>
+
+                  {answers[product.id] && (
+                    <p className="answer">{answers[product.id]}</p>
+                  )}
+                  {askErrors[product.id] && (
+                    <p className="error-message">{askErrors[product.id]}</p>
+                  )}
+                </form>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
