@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.agent import AgentRequest, AgentResponse, run_agent
 from app.catalog import Product, load_products
 from app.embeddings import ProductEmbeddingModel
 from app.feedback import FeedbackRequest, record_feedback
@@ -132,3 +133,14 @@ def submit_feedback(body: FeedbackRequest, request: Request):
 
     record_feedback(body)
     return {"status": "recorded"}
+
+
+@app.post("/assistant", response_model=AgentResponse)
+def assistant(body: AgentRequest, request: Request):
+    answer = run_agent(
+        message=body.message,
+        products=request.app.state.products,
+        embedding_model=request.app.state.embedding_model,
+        product_embeddings=request.app.state.product_embeddings,
+    )
+    return AgentResponse(answer=answer)

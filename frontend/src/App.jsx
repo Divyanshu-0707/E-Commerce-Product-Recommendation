@@ -28,6 +28,11 @@ export default function App() {
   const [feedbackStates, setFeedbackStates] = useState({});
   const [selectedForCompare, setSelectedForCompare] = useState([]);
 
+  const [agentMessage, setAgentMessage] = useState("");
+  const [agentAnswer, setAgentAnswer] = useState("");
+  const [agentError, setAgentError] = useState("");
+  const [agentLoading, setAgentLoading] = useState(false);
+
   const comparisonRows = [
     ["Brand", (product) => product.brand || "Not listed"],
     ["Product type", (product) => product.product_type || "Not listed"],
@@ -87,6 +92,39 @@ export default function App() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function sendToAgent(event) {
+    event.preventDefault();
+
+    const message = agentMessage.trim();
+    if (!message) return;
+
+    setAgentError("");
+    setAgentAnswer("");
+    setAgentLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/assistant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Assistant request failed.");
+      }
+
+      setAgentAnswer(data.answer);
+    } catch (err) {
+      setAgentError(
+        `${err.message} Check that the backend is running at ${API_BASE}.`
+      );
+    } finally {
+      setAgentLoading(false);
     }
   }
 
@@ -207,6 +245,43 @@ export default function App() {
           product details from the catalog.
         </p>
       </header>
+
+      <section className="search-panel">
+        <p className="eyebrow">AGENTIC SHOPPING ASSISTANT</p>
+
+        <form onSubmit={sendToAgent}>
+          <label htmlFor="agentMessage">
+            Ask me to find, compare, or explain laptops
+          </label>
+          <textarea
+            id="agentMessage"
+            value={agentMessage}
+            onChange={(event) => setAgentMessage(event.target.value)}
+            placeholder="Example: Find two Apple ultrabooks under 160000 and compare their RAM"
+            rows={3}
+            required
+          />
+
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={agentLoading}
+          >
+            {agentLoading ? "Assistant is working…" : "Ask assistant"}
+          </button>
+        </form>
+
+        {agentAnswer && (
+          <div className="agent-response" aria-live="polite">
+            <h3>Assistant response</h3>
+            <p className="answer" style={{ whiteSpace: "pre-wrap" }}>
+              {agentAnswer}
+            </p>
+          </div>
+        )}
+
+        {agentError && <p className="error-message">{agentError}</p>}
+      </section>
 
       <section className="search-panel">
         <form onSubmit={searchProducts}>
