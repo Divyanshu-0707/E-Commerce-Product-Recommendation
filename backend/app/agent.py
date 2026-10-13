@@ -18,7 +18,7 @@ from app.embeddings import ProductEmbeddingModel
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(ENV_FILE)
 
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 6
 
 
 class AgentRequest(BaseModel):
@@ -43,9 +43,10 @@ TOOLS = [
         "function": {
             "name": "search_products",
             "description": (
-                "Search the laptop catalog for products matching the user's "
+                "Search the product catalog for products matching the user's "
                 "requirements. Use this when the user asks to find or recommend "
-                "products."
+                "products. Pass explicit category, budget, and attribute "
+                "requirements as filters so they are enforced before ranking."
             ),
             "parameters": {
                 "type": "object",
@@ -53,9 +54,40 @@ TOOLS = [
                     "query": {
                         "type": "string",
                         "description": (
-                            "The user's laptop requirements in natural language."
+                            "The product requirements in natural language."
                         ),
-                    }
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Exact product category when requested.",
+                    },
+                    "max_price": {
+                        "type": "number",
+                        "description": "Inclusive maximum price when requested.",
+                    },
+                    "attribute_filters": {
+                        "type": "object",
+                        "description": (
+                            "Hard product-attribute constraints keyed by catalog "
+                            "attribute name. Each constraint may use eq, gte, "
+                            "and/or lte. Missing attributes do not satisfy a filter."
+                        ),
+                        "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                                "eq": {
+                                    "anyOf": [
+                                        {"type": "string"},
+                                        {"type": "number"},
+                                        {"type": "boolean"},
+                                    ]
+                                },
+                                "gte": {"type": "number"},
+                                "lte": {"type": "number"},
+                            },
+                            "additionalProperties": False,
+                        },
+                    },
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -67,8 +99,10 @@ TOOLS = [
         "function": {
             "name": "compare_products",
             "description": (
-                "Compare exactly two products that were found in the catalog. "
-                "Use their product IDs."
+                "Compare exactly two products found in the catalog by product "
+                "ID. Use the returned comparison rows for common fields and "
+                "category-specific attributes; null means a value is not "
+                "available in that product's catalog record."
             ),
             "parameters": {
                 "type": "object",
@@ -119,12 +153,32 @@ def _run_tool(
 ) -> dict:
     """Run only the catalog tools explicitly allowed by this application."""
     if tool_name == "search_products":
+        allowed_arguments = {
+            "query", "category", "max_price", "attribute_filters"
+        }
+        if set(arguments) - allowed_arguments:
+            return {"error": "The search tool received unsupported filters."}
+
         query = arguments.get("query")
         if not isinstance(query, str):
             return {"error": "The search query must be text."}
+        category = arguments.get("category")
+        if category is not None and not isinstance(category, str):
+            return {"error": "The category filter must be text."}
+        max_price = arguments.get("max_price")
+        if max_price is not None and (
+            isinstance(max_price, bool) or not isinstance(max_price, (int, float))
+        ):
+            return {"error": "The maximum price filter must be numeric."}
+        attribute_filters = arguments.get("attribute_filters", {})
+        if not isinstance(attribute_filters, dict):
+            return {"error": "Attribute filters must be an object."}
 
         return search_products_tool(
             query=query,
+            category=category,
+            max_price=max_price,
+            attribute_filters=attribute_filters,
             products=products,
             embedding_model=embedding_model,
             product_embeddings=product_embeddings,
@@ -177,18 +231,27 @@ def run_agent(
         {
             "role": "system",
             "content": (
-                "You are an AI shopping assistant for a laptop catalog. "
+                "You are an AI shopping assistant for a product catalog that "
+                "may contain many categories. "
                 "Use the available catalog tools to search, compare, or look up "
-                "products. Base product claims only on tool results. If the "
-                "catalog does not contain an answer, say so. Do not invent "
-                "products, specifications, or prices. Keep the final answer "
-                "clear and concise."
+                "products. Apply requested category, budget, and attribute "
+                "constraints through search filters. Base product claims only "
+                "on tool results. Search and comparison results already contain "
+                "the catalog data needed to answer; use those results directly "
+                "instead of looking up each returned product again. Call "
+                "get_product_details only when the user asks about one specific "
+                "product and its record is not already in the conversation. "
+                "Treat null or missing attributes as unknown. "
+                "If the catalog does not contain an answer, say so. Do not "
+                "invent products, specifications, prices, or policies. Keep "
+                "the final answer clear and concise."
             ),
         },
         {"role": "user", "content": message},
     ]
 
-    for _ in range(MAX_TOOL_ROUNDS):
+    tool_rounds = 0
+    while True:
         response = client.chat.completions.create(
             model=model,
             messages=messages,
@@ -204,6 +267,15 @@ def run_agent(
             return answer.strip() if answer else (
                 "I couldn't create an answer from the catalog results."
             )
+
+        if tool_rounds >= MAX_TOOL_ROUNDS:
+            return (
+                "I couldn't finish that request in the allowed number of steps. "
+                "Try asking for a product search, a two-product comparison, or "
+                "details about one catalog product."
+            )
+
+        tool_rounds += 1
 
         messages.append(
             assistant_message.model_dump(exclude_none=True)
@@ -232,9 +304,3 @@ def run_agent(
                     "content": json.dumps(result, ensure_ascii=False),
                 }
             )
-
-    return (
-        "I couldn't finish that request in the allowed number of steps. "
-        "Try asking for a product search, a two-product comparison, or "
-        "details about one catalog product."
-    )

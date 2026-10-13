@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -43,16 +44,32 @@ def answer_question(product: Product, question: str) -> str:
         base_url="https://api.groq.com/openai/v1",
     )
 
+    catalog_record = {
+        "id": product.id,
+        "title": product.title,
+        "category": product.category,
+        "brand": product.brand,
+        "price": product.price,
+        "currency": product.currency,
+        "description": product.description,
+        "attributes": product.attributes,
+    }
+
     response = client.responses.create(
         model=model,
         instructions=(
             "You are a helpful shopping assistant. Answer the customer's question "
             "using only the product catalog data provided. Do not guess or add "
             "outside facts. If the data does not contain the answer, say that the "
-            "catalog does not provide that information. Keep the answer concise."
+            "catalog does not provide that information. Product-specific "
+            "specifications may appear under the attributes object; interpret "
+            "those stored key-value pairs as the source of truth. Do not infer "
+            "a missing attribute from the product category or typical products. "
+            "Keep the answer concise."
         ),
         input=(
-            f"Product catalog data:\n{product.model_dump_json()}\n\n"
+            "Product catalog data:\n"
+            f"{json.dumps(catalog_record, ensure_ascii=False, indent=2)}\n\n"
             f"Customer question:\n{question}"
         ),
     )

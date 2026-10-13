@@ -1,20 +1,50 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-function formatPrice(price) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(price);
+function formatPrice(price, currency = "INR") {
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currency || "INR",
+      maximumFractionDigits: 0,
+    }).format(price);
+  } catch {
+    return `${currency || "INR"} ${new Intl.NumberFormat("en-IN", {
+      maximumFractionDigits: 0,
+    }).format(price)}`;
+  }
+}
+
+function formatAttributeLabel(value) {
+  return String(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatAttributeValue(value) {
+  if (value == null) return "Not available";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function getAttributeValue(product, name) {
+  const entry = Object.entries(product.attributes || {}).find(
+    ([key]) => key.toLocaleLowerCase() === name.toLocaleLowerCase()
+  );
+  return entry?.[1];
 }
 
 export default function App() {
   const [query, setQuery] = useState("");
   const [searchedQuery, setSearchedQuery] = useState("");
   const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [catalogInfo, setCatalogInfo] = useState(null);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -33,27 +63,72 @@ export default function App() {
   const [agentError, setAgentError] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCategories() {
+      try {
+        const response = await fetch(`${API_BASE}/categories`, {
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "Could not load product categories.");
+        }
+        setCategories(data.categories || []);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setCategoriesError(err.message);
+        }
+      } finally {
+        if (!controller.signal.aborted) setCategoriesLoading(false);
+      }
+    }
+
+    async function loadCatalogInfo() {
+      try {
+        const response = await fetch(`${API_BASE}/catalog-info`, {
+          signal: controller.signal,
+        });
+        if (response.ok) setCatalogInfo(await response.json());
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          // The catalog information is an informational banner; search remains usable.
+        }
+      }
+    }
+
+    loadCategories();
+    loadCatalogInfo();
+    return () => controller.abort();
+  }, []);
+
   const comparisonRows = [
-    ["Brand", (product) => product.brand || "Not listed"],
-    ["Product type", (product) => product.product_type || "Not listed"],
-    ["Condition", (product) => product.condition || "Not listed"],
-    ["Price", (product) => formatPrice(product.price)],
-    ["Processor", (product) => product.processor || "Not listed"],
-    [
-      "RAM",
-      (product) =>
-        product.ram_gb != null ? `${product.ram_gb} GB` : "Not listed",
-    ],
-    [
-      "Storage",
-      (product) =>
-        product.storage_gb != null ? `${product.storage_gb} GB` : "Not listed",
-    ],
-    [
-      "Weight",
-      (product) =>
-        product.weight_kg != null ? `${product.weight_kg} kg` : "Not listed",
-    ],
+    {
+      label: "Category",
+      getValue: (product) => formatAttributeValue(product.category),
+    },
+    {
+      label: "Brand",
+      getValue: (product) => formatAttributeValue(product.brand),
+    },
+    {
+      label: "Price",
+      getValue: (product) => formatPrice(product.price, product.currency),
+    },
+    ...[
+      ...new Set(
+        selectedForCompare.flatMap((product) =>
+          Object.keys(product.attributes || {})
+        )
+      ),
+    ]
+      .sort((left, right) => left.localeCompare(right))
+      .map((name) => ({
+        label: formatAttributeLabel(name),
+        getValue: (product) =>
+          formatAttributeValue(getAttributeValue(product, name)),
+      })),
   ];
 
   async function searchProducts(event) {
@@ -239,11 +314,18 @@ export default function App() {
     <main className="page">
       <header className="hero">
         <p className="eyebrow">AI SHOPPING ASSISTANT</p>
-        <h1>Find a laptop that fits your needs.</h1>
+        <h1>Find products that fit your needs.</h1>
         <p className="intro">
           Describe what you need. Recommendations follow your budget and use
           product details from the catalog.
         </p>
+        {catalogInfo?.synthetic && (
+          <p className="demo-notice" role="note">
+            Demo catalog: {catalogInfo.product_count} fictional products across{" "}
+            {catalogInfo.category_count} categories. Prices and product details are
+            synthetic and for demonstration only.
+          </p>
+        )}
       </header>
 
       <section className="search-panel">
@@ -251,13 +333,13 @@ export default function App() {
 
         <form onSubmit={sendToAgent}>
           <label htmlFor="agentMessage">
-            Ask me to find, compare, or explain laptops
+            Ask me to find, compare, or explain products
           </label>
           <textarea
             id="agentMessage"
             value={agentMessage}
             onChange={(event) => setAgentMessage(event.target.value)}
-            placeholder="Example: Find two Apple ultrabooks under 160000 and compare their RAM"
+            placeholder="Example: Find two products under 160000 and compare their features"
             rows={3}
             required
           />
@@ -290,7 +372,7 @@ export default function App() {
             id="query"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Example: lightweight laptop for programming under 80000"
+            placeholder="Example: lightweight laptop under 80000, or waterproof phone under 30000"
             required
             rows={3}
           />
@@ -302,14 +384,22 @@ export default function App() {
                 id="category"
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
+                disabled={categoriesLoading}
               >
                 <option value="">Any category</option>
-                <option value="laptop">Laptop</option>
+                {categories.map((item) => (
+                  <option value={item} key={item}>
+                    {formatAttributeLabel(item)}
+                  </option>
+                ))}
               </select>
+              {categoriesError && (
+                <p className="error-message">{categoriesError}</p>
+              )}
             </div>
 
             <div>
-              <label htmlFor="maxPrice">Maximum price (₹)</label>
+              <label htmlFor="maxPrice">Maximum price</label>
               <input
                 id="maxPrice"
                 type="number"
@@ -333,7 +423,7 @@ export default function App() {
         <p className="empty-message">
           {hasSearched
             ? "No products matched your request. Try changing your search or budget."
-            : "Enter a search above to see laptop recommendations."}
+            : "Enter a search above to see product recommendations."}
         </p>
       )}
 
@@ -349,7 +439,7 @@ export default function App() {
           {selectedForCompare.length > 0 && (
             <section className="compare-panel">
               <div className="compare-heading">
-                <h3>Compare selected laptops</h3>
+                <h3>Compare selected products</h3>
                 <button
                   className="compare-clear-button"
                   type="button"
@@ -361,15 +451,15 @@ export default function App() {
 
               <p className="compare-prompt">
                 {selectedForCompare.length === 1
-                  ? "Select one more laptop to compare side by side."
-                  : "Comparing 2 laptops."}
+                  ? "Select one more product to compare side by side."
+                  : "Comparing 2 products."}
               </p>
 
               <div className="compare-table-wrapper">
                 <table className="compare-table">
                   <thead>
                     <tr>
-                      <th scope="col">Specification</th>
+                      <th scope="col">Field</th>
                       {selectedForCompare.map((product) => (
                         <th scope="col" key={product.id}>
                           {product.title}
@@ -378,7 +468,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {comparisonRows.map(([label, getValue]) => (
+                    {comparisonRows.map(({ label, getValue }) => (
                       <tr key={label}>
                         <th scope="row">{label}</th>
                         {selectedForCompare.map((product) => (
@@ -405,26 +495,26 @@ export default function App() {
                   <div className="product-topline">
                     <div>
                       <p className="product-brand">
-                        {product.brand || "Laptop"}
+                        {formatAttributeLabel(product.category)}
+                        {product.brand ? ` · ${product.brand}` : ""}
                       </p>
                       <h3>{product.title}</h3>
                     </div>
-                    <p className="price">{formatPrice(product.price)}</p>
+                    <p className="price">
+                      {formatPrice(product.price, product.currency)}
+                    </p>
                   </div>
 
                   <p className="description">{product.description}</p>
 
                   <div className="specs">
-                    {product.processor && <span>{product.processor}</span>}
-                    {product.ram_gb != null && (
-                      <span>{product.ram_gb} GB RAM</span>
-                    )}
-                    {product.storage_gb != null && (
-                      <span>{product.storage_gb} GB storage</span>
-                    )}
-                    {product.weight_kg != null && (
-                      <span>{product.weight_kg} kg</span>
-                    )}
+                    {Object.entries(product.attributes || {})
+                      .filter(([, value]) => value != null && value !== "")
+                      .map(([name, value]) => (
+                        <span key={`${product.id}-${name}`}>
+                          {formatAttributeLabel(name)}: {formatAttributeValue(value)}
+                        </span>
+                      ))}
                   </div>
 
                   <div className="match-row">
@@ -442,7 +532,7 @@ export default function App() {
                       }
                       onChange={() => toggleCompare(product)}
                     />
-                    Compare this laptop
+                    Compare this product
                   </label>
 
                   {reasons?.length > 0 && (
@@ -494,7 +584,7 @@ export default function App() {
                     onSubmit={(event) => askAboutProduct(event, product.id)}
                   >
                     <label htmlFor={`question-${product.id}`}>
-                      Ask about this laptop
+                      Ask about this product
                     </label>
                     <div className="ask-row">
                       <input
@@ -506,7 +596,7 @@ export default function App() {
                             [product.id]: event.target.value,
                           }))
                         }
-                        placeholder="How much RAM does it have?"
+                        placeholder="Ask about a product detail"
                       />
                       <button
                         type="submit"

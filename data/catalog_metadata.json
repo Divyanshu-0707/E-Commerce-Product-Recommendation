@@ -1,0 +1,24 @@
+{
+  "dataset_type": "synthetic_demo",
+  "synthetic": true,
+  "notice": "All products, brands, prices, descriptions, and attributes are synthetic demo data.",
+  "product_count": 600,
+  "products_per_category": 50,
+  "category_count": 12,
+  "categories": [
+    "laptop",
+    "smartphone",
+    "headphones",
+    "tablet",
+    "clothing",
+    "shoes",
+    "home_kitchen",
+    "furniture",
+    "books",
+    "sports_fitness",
+    "beauty",
+    "toys_games"
+  ],
+  "currency": "INR",
+  "generation_seed": 20261013
+}

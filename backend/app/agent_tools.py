@@ -1,3 +1,5 @@
+from typing import Any
+
 from app.catalog import Product
 from app.embeddings import ProductEmbeddingModel
 from app.reasons import build_reasons
@@ -13,13 +15,24 @@ def search_products_tool(
     products: list[Product],
     embedding_model: ProductEmbeddingModel,
     product_embeddings,
+    *,
+    category: str | None = None,
+    max_price: float | None = None,
+    attribute_filters: dict[str, Any] | None = None,
 ) -> dict:
-    """Search the catalog using existing filters and hybrid ranking."""
+    """Search the catalog with validated hard filters and hybrid ranking."""
     query = query.strip()
     if not query:
         return {"error": "Search query must not be blank."}
 
-    request = RecommendRequest(query=query)
+    request = RecommendRequest.model_validate(
+        {
+            "query": query,
+            "category": category,
+            "max_price": max_price,
+            "attribute_filters": attribute_filters or {},
+        }
+    )
     filters = resolve_filters(request, products)
     query_embedding = embedding_model.embed_query(query)
 
@@ -49,6 +62,7 @@ def search_products_tool(
                     max_weight_kg=filters.max_weight_kg,
                     min_ram_gb=filters.min_ram_gb,
                     min_storage_gb=filters.min_storage_gb,
+                    attribute_filters=filters.attribute_filters,
                 ),
             }
         )
@@ -80,12 +94,42 @@ def compare_products_tool(
             "missing_product_ids": missing_ids,
         }
 
-    return {
-        "products": [
-            products_by_id[product_id].model_dump(mode="json")
-            for product_id in product_ids
-        ]
-    }
+    selected_products = [products_by_id[product_id] for product_id in product_ids]
+    product_records = [
+        product.model_dump(mode="json") for product in selected_products
+    ]
+
+    common_fields = ("title", "category", "brand", "price", "currency")
+    comparison_rows = [
+        {
+            "field": field,
+            "values": [getattr(product, field) for product in selected_products],
+        }
+        for field in common_fields
+    ]
+
+    attribute_names: dict[str, str] = {}
+    for product in selected_products:
+        for name in product.attributes:
+            normalized_name = str(name).casefold()
+            attribute_names.setdefault(normalized_name, str(name))
+
+    for normalized_name, display_name in sorted(attribute_names.items()):
+        values = []
+        for product in selected_products:
+            values_by_name = {
+                str(name).casefold(): value
+                for name, value in product.attributes.items()
+            }
+            values.append(values_by_name.get(normalized_name))
+        comparison_rows.append(
+            {
+                "field": f"attributes.{display_name}",
+                "values": values,
+            }
+        )
+
+    return {"products": product_records, "comparison_rows": comparison_rows}
 
 
 def get_product_details_tool(

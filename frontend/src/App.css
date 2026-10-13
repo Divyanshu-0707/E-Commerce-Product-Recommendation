@@ -351,3 +351,16 @@ select:focus {
   opacity: 0.6;
 }
 }
+
+.demo-notice {
+  width: fit-content;
+  max-width: 700px;
+  margin: 16px 0 0;
+  padding: 10px 14px;
+  border: 1px solid #eadca4;
+  border-radius: 10px;
+  background: #fff9df;
+  color: #65551d;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

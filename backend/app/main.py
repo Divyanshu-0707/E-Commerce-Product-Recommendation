@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import json
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +46,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+CATALOG_METADATA_PATH = Path(__file__).resolve().parents[2] / "data" / "catalog_metadata.json"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -59,6 +63,19 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/categories")
+def categories(request: Request):
+    values = {product.category for product in request.app.state.products}
+    return {"categories": sorted(values, key=str.casefold)}
+
+
+@app.get("/catalog-info")
+def catalog_info():
+    if not CATALOG_METADATA_PATH.exists():
+        return {"synthetic": False}
+    return json.loads(CATALOG_METADATA_PATH.read_text(encoding="utf-8"))
 
 
 @app.post("/recommend", response_model=RecommendResponse)
@@ -91,6 +108,7 @@ def recommend(body: RecommendRequest, request: Request):
                     max_weight_kg=filters.max_weight_kg,
                     min_ram_gb=filters.min_ram_gb,
                     min_storage_gb=filters.min_storage_gb,
+                    attribute_filters=filters.attribute_filters,
                 ),
             }
             for product, score in ranked

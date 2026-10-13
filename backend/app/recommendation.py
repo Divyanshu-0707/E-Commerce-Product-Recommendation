@@ -1,10 +1,46 @@
 import re
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 from app.catalog import Product
+
+
+class AttributeConstraint(BaseModel):
+    """Hard conditions that may be applied to any product attribute."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    eq: StrictStr | StrictInt | StrictFloat | StrictBool | None = None
+    gte: float | None = Field(default=None, allow_inf_nan=False)
+    lte: float | None = Field(default=None, allow_inf_nan=False)
+
+    @field_validator("gte", "lte", mode="before")
+    @classmethod
+    def numeric_constraints_must_be_numbers(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            raise ValueError("gte and lte attribute constraints must be numeric")
+        return value
+
+    @model_validator(mode="after")
+    def constraint_must_be_satisfiable(self) -> "AttributeConstraint":
+        if self.eq is None and self.gte is None and self.lte is None:
+            raise ValueError("Provide at least one of eq, gte, or lte")
+        if self.gte is not None and self.lte is not None and self.gte > self.lte:
+            raise ValueError("gte cannot be greater than lte")
+        return self
 
 
 class RecommendRequest(BaseModel):
@@ -17,6 +53,7 @@ class RecommendRequest(BaseModel):
     max_weight_kg: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     min_ram_gb: int | None = Field(default=None, ge=0)
     min_storage_gb: int | None = Field(default=None, ge=0)
+    attribute_filters: dict[str, AttributeConstraint] = Field(default_factory=dict)
 
     @field_validator("query")
     @classmethod
@@ -33,6 +70,22 @@ class RecommendRequest(BaseModel):
             return None
         return value.strip().casefold()
 
+    @field_validator("attribute_filters")
+    @classmethod
+    def normalize_attribute_filter_names(
+        cls,
+        value: dict[str, AttributeConstraint],
+    ) -> dict[str, AttributeConstraint]:
+        normalized: dict[str, AttributeConstraint] = {}
+        for name, constraint in value.items():
+            key = name.strip().casefold()
+            if not key:
+                raise ValueError("Attribute filter names must not be blank")
+            if key in normalized:
+                raise ValueError(f"Duplicate attribute filter name: {name!r}")
+            normalized[key] = constraint
+        return normalized
+
 
 @dataclass(frozen=True)
 class ResolvedFilters:
@@ -44,6 +97,7 @@ class ResolvedFilters:
     max_weight_kg: float | None
     min_ram_gb: int | None
     min_storage_gb: int | None
+    attribute_filters: dict[str, AttributeConstraint]
 
 
 PRICE_PATTERN = re.compile(
@@ -207,7 +261,66 @@ def resolve_filters(
         max_weight_kg=max_weight_kg,
         min_ram_gb=min_ram_gb,
         min_storage_gb=min_storage_gb,
+        attribute_filters=request.attribute_filters,
     )
+
+
+_MISSING_ATTRIBUTE = object()
+
+
+def _get_product_attribute(product: Product, name: str) -> Any:
+    normalized_name = name.casefold()
+    matches = [
+        value
+        for key, value in product.attributes.items()
+        if str(key).casefold() == normalized_name
+    ]
+    if len(matches) != 1:
+        return _MISSING_ATTRIBUTE
+    return matches[0]
+
+
+def _attribute_constraint_matches(
+    product: Product,
+    name: str,
+    constraint: AttributeConstraint,
+) -> bool:
+    actual = _get_product_attribute(product, name)
+    if actual is _MISSING_ATTRIBUTE:
+        return False
+
+    if constraint.eq is not None:
+        expected = constraint.eq
+        if isinstance(expected, bool):
+            if not isinstance(actual, bool) or actual is not expected:
+                return False
+        elif isinstance(expected, str):
+            if not isinstance(actual, str) or actual.casefold() != expected.casefold():
+                return False
+        elif (
+            isinstance(actual, bool)
+            or not isinstance(actual, (int, float))
+            or actual != expected
+        ):
+            return False
+
+    if constraint.gte is not None:
+        if (
+            isinstance(actual, bool)
+            or not isinstance(actual, (int, float))
+            or actual < constraint.gte
+        ):
+            return False
+
+    if constraint.lte is not None:
+        if (
+            isinstance(actual, bool)
+            or not isinstance(actual, (int, float))
+            or actual > constraint.lte
+        ):
+            return False
+
+    return True
 
 
 def lexical_match_score(query: str, product: Product) -> float:
@@ -248,6 +361,11 @@ def rank_products(
     eligible_indices = []
 
     for index, product in enumerate(products):
+        if any(
+            not _attribute_constraint_matches(product, name, constraint)
+            for name, constraint in filters.attribute_filters.items()
+        ):
+            continue
         if filters.category and product.category.casefold() != filters.category:
             continue
         if (
