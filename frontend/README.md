@@ -1,16 +1,31 @@
-# React + Vite
+# Shopping assistant frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React and Vite provide catalog search, filters, product details and reasons, comparison, helpfulness feedback, product questions, and the agent form.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Node.js 24 was used for local verification. Start the backend first using [backend setup](../backend/README.md). From the repository root:
 
-## React Compiler
+```powershell
+cd frontend
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Open [the app](http://127.0.0.1:5173/). The API address in `src/App.jsx` is `http://127.0.0.1:8000`. Port 5173 is allowed by backend CORS; `--strictPort` prevents Vite silently selecting an unsupported port.
 
-## Expanding the Oxlint configuration
+Enter a request, optionally select a category and budget, and click **Find recommendations**. Changing filters requires submitting again. For no matches, the interface shows the explanation from the last submitted response. Unsubmitted edits do not change that explanation.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Q&A and the agent require Groq credentials on the backend. Search itself does not require those credentials.
+
+## Checks and build preview
+
+```powershell
+npm run lint
+npm run build
+npm run preview -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Stop the dev server before using preview on the same port. The default preview port 4173 is not allowed by the current backend CORS configuration. A successful build does not establish live API or AI-answer correctness.
+
+See [example searches](../docs/example-searches.md) and [demo script](../docs/demo-script.md).

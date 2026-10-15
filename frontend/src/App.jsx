@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import "./App.css";
 
 const API_BASE = "http://127.0.0.1:8000";
@@ -50,6 +52,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
+  const [noResultsMessage, setNoResultsMessage] = useState("");
 
   const [questions, setQuestions] = useState({});
   const [answers, setAnswers] = useState({});
@@ -103,6 +106,13 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
+  const comparisonAttributes = new Set();
+  for (const product of selectedForCompare) {
+    for (const name of Object.keys(product.attributes || {})) {
+      comparisonAttributes.add(name);
+    }
+  }
+
   const comparisonRows = [
     {
       label: "Category",
@@ -116,25 +126,24 @@ export default function App() {
       label: "Price",
       getValue: (product) => formatPrice(product.price, product.currency),
     },
-    ...[
-      ...new Set(
-        selectedForCompare.flatMap((product) =>
-          Object.keys(product.attributes || {})
-        )
-      ),
-    ]
-      .sort((left, right) => left.localeCompare(right))
-      .map((name) => ({
-        label: formatAttributeLabel(name),
-        getValue: (product) =>
-          formatAttributeValue(getAttributeValue(product, name)),
-      })),
   ];
+
+  const sortedAttributes = [...comparisonAttributes].sort((left, right) =>
+    left.localeCompare(right)
+  );
+  for (const name of sortedAttributes) {
+    comparisonRows.push({
+      label: formatAttributeLabel(name),
+      getValue: (product) =>
+        formatAttributeValue(getAttributeValue(product, name)),
+    });
+  }
 
   async function searchProducts(event) {
     event.preventDefault();
     setError("");
     setResults([]);
+    setNoResultsMessage("");
     setFeedbackStates({});
     setSelectedForCompare([]);
     setHasSearched(true);
@@ -161,6 +170,7 @@ export default function App() {
       }
 
       setResults(data.results);
+      setNoResultsMessage(data.message || "");
     } catch (err) {
       setError(
         `${err.message} Check that the backend is running at ${API_BASE}.`
@@ -196,7 +206,9 @@ export default function App() {
       setAgentAnswer(data.answer);
     } catch (err) {
       setAgentError(
-        `${err.message} Check that the backend is running at ${API_BASE}.`
+        err instanceof TypeError
+          ? `${err.message} Check that the backend is running at ${API_BASE}.`
+          : err.message
       );
     } finally {
       setAgentLoading(false);
@@ -312,8 +324,12 @@ export default function App() {
 
   return (
     <main className="page">
+      <div className="app-bar">
+        <span className="app-brand">AI Shopping Assistant<span className="brand-dot" aria-hidden="true" /></span>
+        <span className="app-context">Your catalog workspace</span>
+      </div>
       <header className="hero">
-        <p className="eyebrow">AI SHOPPING ASSISTANT</p>
+        <p className="eyebrow">LESS SEARCHING. BETTER CHOICES.</p>
         <h1>Find products that fit your needs.</h1>
         <p className="intro">
           Describe what you need. Recommendations follow your budget and use
@@ -328,45 +344,12 @@ export default function App() {
         )}
       </header>
 
-      <section className="search-panel">
-        <p className="eyebrow">AGENTIC SHOPPING ASSISTANT</p>
-
-        <form onSubmit={sendToAgent}>
-          <label htmlFor="agentMessage">
-            Ask me to find, compare, or explain products
-          </label>
-          <textarea
-            id="agentMessage"
-            value={agentMessage}
-            onChange={(event) => setAgentMessage(event.target.value)}
-            placeholder="Example: Find two products under 160000 and compare their features"
-            rows={3}
-            required
-          />
-
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={agentLoading}
-          >
-            {agentLoading ? "Assistant is working…" : "Ask assistant"}
-          </button>
-        </form>
-
-        {agentAnswer && (
-          <div className="agent-response" aria-live="polite">
-            <h3>Assistant response</h3>
-            <p className="answer" style={{ whiteSpace: "pre-wrap" }}>
-              {agentAnswer}
-            </p>
-          </div>
-        )}
-
-        {agentError && <p className="error-message">{agentError}</p>}
-      </section>
-
-      <section className="search-panel">
-        <form onSubmit={searchProducts}>
+      <div className="workspace">
+        <section className="search-panel catalog-panel" aria-labelledby="catalog-title">
+        <p className="section-kicker">CATALOG SEARCH</p>
+        <h2 id="catalog-title">Find your next good fit.</h2>
+        <p className="panel-description">Browse product cards with your budget and category in mind.</p>
+        <form onSubmit={searchProducts} aria-busy={loading}>
           <label htmlFor="query">What are you looking for?</label>
           <textarea
             id="query"
@@ -416,13 +399,55 @@ export default function App() {
           </button>
         </form>
       </section>
+        <section className="search-panel assistant-panel" aria-labelledby="assistant-title">
+        <p className="section-kicker">AI ASSISTANT</p>
+        <h2 id="assistant-title">A little help choosing.</h2>
+        <p className="panel-description">Ask for an explanation, a comparison, or help finding a product.</p>
+
+        <form onSubmit={sendToAgent} aria-busy={agentLoading}>
+          <label htmlFor="agentMessage">
+            Ask me to find, compare, or explain products
+          </label>
+          <textarea
+            id="agentMessage"
+            value={agentMessage}
+            onChange={(event) => setAgentMessage(event.target.value)}
+            placeholder="Example: Find two products under 160000 and compare their features"
+            rows={4}
+            required
+          />
+
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={agentLoading}
+          >
+            {agentLoading ? "Assistant is working…" : "Ask assistant"}
+          </button>
+          <p className="field-hint">AI answers can make mistakes. Check the catalog details.</p>
+        </form>
+
+        {agentAnswer && (
+          <div className="agent-response" aria-live="polite">
+            <h3>Assistant response</h3>
+            <div className="answer agent-markdown">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                {agentAnswer}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
+
+        {agentError && <p className="error-message">{agentError}</p>}
+      </section>
+      </div>
 
       {error && <p className="error-message">{error}</p>}
 
       {!loading && results.length === 0 && !error && (
         <p className="empty-message">
           {hasSearched
-            ? "No products matched your request. Try changing your search or budget."
+            ? noResultsMessage || "No products matched your request. Try changing your search or budget."
             : "Enter a search above to see product recommendations."}
         </p>
       )}

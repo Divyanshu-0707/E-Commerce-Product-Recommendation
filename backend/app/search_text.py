@@ -10,18 +10,18 @@ def _display_attribute_value(value: Any) -> str | None:
     if isinstance(value, bool):
         return "yes" if value else "no"
     if isinstance(value, dict):
-        parts = [
-            f"{key}: {display_value}"
-            for key in sorted(value, key=str)
-            if (display_value := _display_attribute_value(value[key]))
-        ]
+        parts = []
+        for key in sorted(value, key=str):
+            display_value = _display_attribute_value(value[key])
+            if display_value:
+                parts.append(f"{key}: {display_value}")
         return ", ".join(parts) or None
     if isinstance(value, (list, tuple, set)):
-        parts = [
-            display_value
-            for item in value
-            if (display_value := _display_attribute_value(item))
-        ]
+        parts = []
+        for item in value:
+            display_value = _display_attribute_value(item)
+            if display_value:
+                parts.append(display_value)
         return ", ".join(parts) or None
 
     text = str(value).strip()
@@ -30,7 +30,7 @@ def _display_attribute_value(value: Any) -> str | None:
 
 def _attribute_label(key: str) -> str:
     """Make catalog attribute keys readable without category-specific rules."""
-    return " ".join(part for part in key.replace("_", " ").replace("-", " ").split())
+    return " ".join(key.replace("_", " ").replace("-", " ").split())
 
 
 def build_product_text(product: Product) -> str:

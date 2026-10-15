@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from openai import APIError
 
 from app.agent import AgentRequest, AgentResponse, run_agent
 from app.catalog import Product, load_products
@@ -13,6 +14,7 @@ from app.feedback import FeedbackRequest, record_feedback
 from app.qa import AskRequest, AskResponse, answer_question
 from app.recommendation import (
     RecommendRequest,
+    no_results_message,
     rank_products,
     resolve_filters,
 )
@@ -27,6 +29,7 @@ class RecommendationItem(BaseModel):
 
 class RecommendResponse(BaseModel):
     results: list[RecommendationItem]
+    message: str | None = None
 
 
 @asynccontextmanager
@@ -93,6 +96,7 @@ def recommend(body: RecommendRequest, request: Request):
     )
 
     return {
+        "message": no_results_message(filters) if not ranked else None,
         "results": [
             {
                 "product": product,
@@ -133,7 +137,16 @@ def ask(body: AskRequest, request: Request):
             detail=f"Product with id {body.product_id!r} was not found.",
         )
 
-    return {"answer": answer_question(product, body.question)}
+    try:
+        answer = answer_question(product, body.question)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except APIError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The AI service could not complete the request. Please try again.",
+        ) from exc
+    return {"answer": answer}
 
 
 @app.post("/feedback")
@@ -155,10 +168,18 @@ def submit_feedback(body: FeedbackRequest, request: Request):
 
 @app.post("/assistant", response_model=AgentResponse)
 def assistant(body: AgentRequest, request: Request):
-    answer = run_agent(
-        message=body.message,
-        products=request.app.state.products,
-        embedding_model=request.app.state.embedding_model,
-        product_embeddings=request.app.state.product_embeddings,
-    )
+    try:
+        answer = run_agent(
+            message=body.message,
+            products=request.app.state.products,
+            embedding_model=request.app.state.embedding_model,
+            product_embeddings=request.app.state.product_embeddings,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except APIError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The AI service could not complete the request. Please try again.",
+        ) from exc
     return AgentResponse(answer=answer)

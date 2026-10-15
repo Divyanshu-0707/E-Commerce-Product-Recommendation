@@ -58,15 +58,15 @@ TOOLS = [
                         ),
                     },
                     "category": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Exact product category when requested.",
                     },
                     "max_price": {
-                        "type": "number",
+                        "type": ["number", "null"],
                         "description": "Inclusive maximum price when requested.",
                     },
                     "attribute_filters": {
-                        "type": "object",
+                        "type": ["object", "null"],
                         "description": (
                             "Hard product-attribute constraints keyed by catalog "
                             "attribute name. Each constraint may use eq, gte, "
@@ -170,7 +170,9 @@ def _run_tool(
             isinstance(max_price, bool) or not isinstance(max_price, (int, float))
         ):
             return {"error": "The maximum price filter must be numeric."}
-        attribute_filters = arguments.get("attribute_filters", {})
+        attribute_filters = arguments.get("attribute_filters")
+        if attribute_filters is None:
+            attribute_filters = {}
         if not isinstance(attribute_filters, dict):
             return {"error": "Attribute filters must be an object."}
 

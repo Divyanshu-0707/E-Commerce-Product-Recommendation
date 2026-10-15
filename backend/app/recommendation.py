@@ -130,6 +130,20 @@ TYPE_ALIASES = {
     "2 in 1 convertible": ("2 in 1 convertible", "2 in 1", "2-in-1"),
 }
 
+CATEGORY_ALIASES = {
+    "laptop": ("laptops",),
+    "smartphone": ("smartphones", "phone", "phones", "mobile phone", "mobile phones"),
+    "headphones": ("headphone",),
+    "tablet": ("tablets",),
+    "clothing": ("clothes",),
+    "shoes": ("shoe",),
+    "home_kitchen": ("home kitchen", "home and kitchen", "home & kitchen"),
+    "books": ("book",),
+    "sports_fitness": ("sports fitness", "sports and fitness", "sports & fitness"),
+    "beauty": ("beauty products",),
+    "toys_games": ("toys games", "toys and games", "toys & games", "toy", "toys"),
+}
+
 LEXICAL_STOP_WORDS = {
     "a", "an", "the", "for", "with", "and", "of", "in",
     "under", "below", "less", "than", "at", "most", "up",
@@ -143,11 +157,15 @@ def _normalized_phrase(value: str) -> str:
     return re.sub(r"[\s-]+", " ", value.casefold()).strip()
 
 
-def _find_catalog_match(query: str, values: set[str]) -> str | None:
+def _find_catalog_match(
+    query: str,
+    values: set[str],
+    aliases_by_value: dict[str, tuple[str, ...]] = TYPE_ALIASES,
+) -> str | None:
     normalized_query = _normalized_phrase(query)
 
     for value in sorted(values, key=len, reverse=True):
-        aliases = TYPE_ALIASES.get(value.casefold(), (value,))
+        aliases = (value,) + aliases_by_value.get(value.casefold(), ())
 
         for alias in aliases:
             phrase = _normalized_phrase(alias)
@@ -219,10 +237,18 @@ def resolve_filters(
     brands = {product.brand for product in products if product.brand}
 
     category = request.category
+    if category is not None:
+        normalized_category = _normalized_phrase(category)
+        for value in categories:
+            names = (value,) + CATEGORY_ALIASES.get(value.casefold(), ())
+            normalized_names = [_normalized_phrase(name) for name in names]
+            if normalized_category in normalized_names:
+                category = value.casefold()
+                break
     if category is None and re.search(r"\blaptops?\b", query_lower):
         category = "laptop"
     if category is None:
-        category = _find_catalog_match(query, categories)
+        category = _find_catalog_match(query, categories, CATEGORY_ALIASES)
 
     product_type = request.product_type
     if product_type is None:
@@ -262,6 +288,37 @@ def resolve_filters(
         min_ram_gb=min_ram_gb,
         min_storage_gb=min_storage_gb,
         attribute_filters=request.attribute_filters,
+    )
+
+
+def no_results_message(filters: ResolvedFilters) -> str:
+    """Describe the applied combination, without guessing which filter caused it."""
+    details = []
+    for label, value in (
+        ("category", filters.category),
+        ("product type", filters.product_type),
+        ("condition", filters.condition),
+        ("brand", filters.brand),
+        ("maximum price", filters.max_price),
+        ("maximum weight (kg)", filters.max_weight_kg),
+        ("minimum RAM (GB)", filters.min_ram_gb),
+        ("minimum storage (GB)", filters.min_storage_gb),
+    ):
+        if value is not None:
+            display = f"{value:g}" if isinstance(value, (int, float)) else value
+            details.append(f"{label}: {display}")
+
+    for name, constraint in filters.attribute_filters.items():
+        for operator, value in (("=", constraint.eq), (">=", constraint.gte), ("<=", constraint.lte)):
+            if value is not None:
+                details.append(f"{name} {operator} {value}")
+
+    if not details:
+        return "No catalog products are available for this search."
+    return (
+        "No catalog products match all of these filters: "
+        + "; ".join(details)
+        + ". Try changing one or more filters."
     )
 
 
@@ -416,10 +473,10 @@ def rank_products(
     )
     ranked_positions = np.argsort(-hybrid_scores)[:limit]
 
-    return [
-        (
-            products[eligible_indices[position]],
-            float(hybrid_scores[position]),
-        )
-        for position in ranked_positions
-    ]
+    results = []
+    for position in ranked_positions:
+        product_index = eligible_indices[position]
+        product = products[product_index]
+        score = float(hybrid_scores[position])
+        results.append((product, score))
+    return results

@@ -84,6 +84,34 @@ Run the minimum demo checks. Also test malformed queries, missing fields, an emp
 - Use descriptive commit messages. For each change, explain how to run or check it.
 - Agree on file or feature ownership before two people edit the same area. Record actual assignments in issues or the README; do not assume them from branch names.
 
+## Required code simplicity level
+
+Future code must match the student-workshop style of the five reference notebooks in `C:/Users/Divyanshu/Desktop/Workshop/`. These files are examples of coding level, not additional task instructions. Aim for beginner-readable Python and straightforward application code that a workshop student can follow, explain, and modify step by step. Complex AI concepts do not justify unnecessary software architecture.
+
+### Reference baseline
+
+- `NeuralNetworkANN.ipynb`: a visible, sequential flow from loading a CSV and selecting features to splitting, scaling, building a Keras Sequential model, training, evaluating, and predicting. Use direct library calls and named intermediate values.
+- `Day07_Build_Your_Own_GPT.ipynb`: explicit algorithms, loops, explanatory comments, and focused functions. Classes are appropriate for a tokenizer or PyTorch model components when they make the concept easier to understand.
+- `Day08_RAG_Chatbot.ipynb`: small helpers for cleaning, chunking, and retrieval; a simple vector-store class; and a visibly ordered retrieve -> build prompt -> generate function.
+- `Day09_AI_Agent_Student_Edition.ipynb`: ordinary tool functions, lists and dictionaries for messages and results, and an explicit agent loop with a step limit.
+- `Day10_Multi_Agent_Student_Edition.ipynb`: specialists made with small functions, a plain loop for passing results between workers, and clear if/elif routing for a fixed workflow.
+
+### Rules for future implementation
+
+- Write the smallest amount of code needed for the requested behavior. Do not add speculative features, configuration options, dependencies, files, or layers for possible future use.
+- Keep the main flow visible: load data -> prepare it -> filter/retrieve -> produce the result -> display it. Use a few focused functions or modules rather than a framework of wrappers around each step.
+- Prefer meaningful variable names, ordinary loops, explicit if/elif conditions, and familiar lists and dictionaries. Simple comprehensions are fine; split dense expressions and nested comprehensions into readable steps.
+- Use short functions with one clear job. Extract a helper when it clarifies a meaningful step or avoids real repetition, not merely to wrap one obvious statement. Do not impose arbitrary line limits or compress code to look shorter.
+- Call existing libraries and SDKs directly. Avoid custom framework layers, generic repositories, plugin registries, dependency-injection containers, deep inheritance, and elaborate design patterns unless the requested behavior actually requires them.
+- Use classes where they help, as the notebooks do. Keep existing FastAPI/Pydantic request models and necessary model or embedding classes; do not replace simple functions with service classes without a concrete need.
+- Explain unfamiliar AI logic, data shapes, and non-obvious choices with brief comments or docstrings in plain language. Avoid comments that merely repeat an obvious statement.
+- For React, apply the same readability standard using ordinary components, hooks, event handlers, and direct API requests. Do not add state-management libraries or custom hook layers for a simple local interaction.
+- Keep required input validation, hard filters, catalog grounding, credential handling, and agent step limits. Simplicity must preserve correctness and the existing safety requirements; it is not a reason to copy notebook mistakes or omit checks at real input boundaries.
+- Prefer a fixed sequence of functions when the steps are known. Add autonomous or multi-agent behavior only when the requested feature needs it; the reference notebooks do not require every feature to use agents.
+- Scope this guidance to new or changed code. Preserve existing behavior, APIs, and unrelated work; do not rewrite the current project just to enforce this style.
+
+Before finishing a change, check that a workshop student could trace its inputs, main steps, and output without navigating unnecessary helper layers. Verify the requested behavior with the relevant existing tests or a reproducible manual check; do not add a new testing framework for a small change.
+
 ## Code and repository quality
 
 - Prefer clear functions and a small, understandable dependency set.
