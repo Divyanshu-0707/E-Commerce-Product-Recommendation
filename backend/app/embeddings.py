@@ -7,7 +7,6 @@ import numpy as np
 from app.catalog import Product
 from app.search_text import build_product_text
 
-
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIMENSION = 384
 CACHE_DIR = Path(__file__).resolve().parents[1] / ".cache"
@@ -15,7 +14,7 @@ CACHE_DIR = Path(__file__).resolve().parents[1] / ".cache"
 
 class ProductEmbeddingModel:
     def __init__(self) -> None:
-        # Import the optional model package only when semantic search is used.
+        # Load this dependency only when semantic search starts.
         from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(MODEL_NAME)
@@ -45,7 +44,7 @@ class ProductEmbeddingModel:
                     print("Loaded cached product embeddings.")
                     return cached.astype(np.float32, copy=False)
             except (OSError, ValueError):
-                # Rebuild the cache if the file is damaged or unreadable.
+                # Rebuild an unreadable cache.
                 pass
 
         embeddings = self.model.encode(

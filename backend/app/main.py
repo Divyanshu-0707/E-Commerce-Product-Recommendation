@@ -59,7 +59,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-CATALOG_METADATA_PATH = Path(__file__).resolve().parents[2] / "data" / "catalog_metadata.json"
+CATALOG_METADATA_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "catalog_metadata.json"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -114,43 +116,26 @@ def recommend(body: RecommendRequest, request: Request):
         limit=10,
     )
 
-    return {
-        "message": (
-            no_results_message(filters, request.app.state.products)
-            if not ranked
-            else None
-        ),
-        "results": [
+    results = []
+    for product, score in ranked:
+        results.append(
             {
                 "product": product,
                 "score": score,
-                "reasons": build_reasons(
-                    product=product,
-                    query=body.query,
-                    category=filters.category,
-                    max_price=filters.max_price,
-                    product_type=filters.product_type,
-                    condition=filters.condition,
-                    brand=filters.brand,
-                    max_weight_kg=filters.max_weight_kg,
-                    min_ram_gb=filters.min_ram_gb,
-                    min_storage_gb=filters.min_storage_gb,
-                    attribute_filters=filters.attribute_filters,
-                ),
+                "reasons": build_reasons(product, body.query, filters),
             }
-            for product, score in ranked
-        ]
-    }
+        )
+
+    message = None
+    if not results:
+        message = no_results_message(filters, request.app.state.products, body.query)
+    return {"results": results, "message": message}
 
 
 @app.post("/ask", response_model=AskResponse)
 def ask(body: AskRequest, request: Request):
     product = next(
-        (
-            item
-            for item in request.app.state.products
-            if item.id == body.product_id
-        ),
+        (item for item in request.app.state.products if item.id == body.product_id),
         None,
     )
 
@@ -175,8 +160,7 @@ def ask(body: AskRequest, request: Request):
 @app.post("/feedback")
 def submit_feedback(body: FeedbackRequest, request: Request):
     product_exists = any(
-        product.id == body.product_id
-        for product in request.app.state.products
+        product.id == body.product_id for product in request.app.state.products
     )
 
     if not product_exists:

@@ -16,11 +16,7 @@ class FeedbackRequest(BaseModel):
         return value.strip()
 
 
-FEEDBACK_FILE = (
-    Path(__file__).resolve().parents[2]
-    / "data"
-    / "feedback.jsonl"
-)
+FEEDBACK_FILE = Path(__file__).resolve().parents[2] / "data" / "feedback.jsonl"
 
 
 def record_feedback(feedback: FeedbackRequest) -> None:

@@ -4,7 +4,6 @@ import csv
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATH = ROOT / "data" / "source" / "products.csv"
 OUTPUT_PATH = ROOT / "data" / "products.csv"

@@ -5,6 +5,7 @@ from app.embeddings import ProductEmbeddingModel
 from app.reasons import build_reasons
 from app.recommendation import (
     RecommendRequest,
+    no_results_message,
     rank_products,
     resolve_filters,
 )
@@ -20,26 +21,27 @@ def search_products_tool(
     max_price: float | None = None,
     attribute_filters: dict[str, Any] | None = None,
 ) -> dict:
-    """Search the catalog with validated hard filters and hybrid ranking."""
+    """Search the catalog with the same filters as the web form."""
     query = query.strip()
     if not query:
         return {"error": "Search query must not be blank."}
 
-    request = RecommendRequest.model_validate(
-        {
-            "query": query,
-            "category": category,
-            "max_price": max_price,
-            "attribute_filters": attribute_filters or {},
-        }
-    )
+    request_data = {
+        "query": query,
+        "category": category,
+        "attribute_filters": attribute_filters or {},
+    }
+    # Omit an unspecified budget so the query can supply it.
+    if max_price is not None:
+        request_data["max_price"] = max_price
+    request = RecommendRequest.model_validate(request_data)
     filters = resolve_filters(request, products)
     query_embedding = None
     if embedding_model is not None:
         try:
             query_embedding = embedding_model.embed_query(query)
         except Exception:
-            # Let the shared ranker use its keyword-only fallback.
+            # Fall back to keyword search.
             query_embedding = None
 
     ranked = rank_products(
@@ -57,23 +59,14 @@ def search_products_tool(
             {
                 "product": product.model_dump(mode="json"),
                 "score": float(score),
-                "reasons": build_reasons(
-                    product=product,
-                    query=query,
-                    category=filters.category,
-                    max_price=filters.max_price,
-                    product_type=filters.product_type,
-                    condition=filters.condition,
-                    brand=filters.brand,
-                    max_weight_kg=filters.max_weight_kg,
-                    min_ram_gb=filters.min_ram_gb,
-                    min_storage_gb=filters.min_storage_gb,
-                    attribute_filters=filters.attribute_filters,
-                ),
+                "reasons": build_reasons(product, query, filters),
             }
         )
 
-    return {"results": results, "count": len(results)}
+    response = {"results": results, "count": len(results)}
+    if not results:
+        response["message"] = no_results_message(filters, products, query)
+    return response
 
 
 def compare_products_tool(
@@ -89,9 +82,7 @@ def compare_products_tool(
 
     products_by_id = {product.id: product for product in products}
     missing_ids = [
-        product_id
-        for product_id in product_ids
-        if product_id not in products_by_id
+        product_id for product_id in product_ids if product_id not in products_by_id
     ]
 
     if missing_ids:
@@ -101,9 +92,7 @@ def compare_products_tool(
         }
 
     selected_products = [products_by_id[product_id] for product_id in product_ids]
-    product_records = [
-        product.model_dump(mode="json") for product in selected_products
-    ]
+    product_records = [product.model_dump(mode="json") for product in selected_products]
 
     common_fields = ("title", "category", "brand", "price", "currency")
     comparison_rows = [
@@ -120,14 +109,16 @@ def compare_products_tool(
             normalized_name = str(name).casefold()
             attribute_names.setdefault(normalized_name, str(name))
 
+    attributes_by_product = []
+    for product in selected_products:
+        attributes_by_product.append(
+            {str(name).casefold(): value for name, value in product.attributes.items()}
+        )
+
     for normalized_name, display_name in sorted(attribute_names.items()):
-        values = []
-        for product in selected_products:
-            values_by_name = {
-                str(name).casefold(): value
-                for name, value in product.attributes.items()
-            }
-            values.append(values_by_name.get(normalized_name))
+        values = [
+            attributes.get(normalized_name) for attributes in attributes_by_product
+        ]
         comparison_rows.append(
             {
                 "field": f"attributes.{display_name}",
@@ -142,7 +133,7 @@ def get_product_details_tool(
     product_id: str,
     products: list[Product],
 ) -> dict:
-    """Look up one product's catalog data for a grounded answer."""
+    """Look up a product by its catalog ID."""
     product = next(
         (item for item in products if item.id == product_id),
         None,

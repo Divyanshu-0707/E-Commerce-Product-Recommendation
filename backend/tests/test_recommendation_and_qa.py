@@ -35,6 +35,50 @@ def make_product(
 
 
 class KeywordFallbackTests(unittest.TestCase):
+    def test_null_budget_removes_price_cap_but_keeps_category(self):
+        products = [
+            make_product("laptop-1", "Programming Laptop", 50000),
+            make_product("laptop-2", "Programming Laptop Plus", 70000),
+            make_product("phone-1", "Programming Phone", 20000, "smartphone"),
+        ]
+        request = RecommendRequest.model_validate(
+            {
+                "query": "programming laptop under 60000",
+                "category": "laptop",
+                "max_price": None,
+            }
+        )
+        filters = resolve_filters(request, products)
+        ranked = rank_products(
+            products=products,
+            product_embeddings=None,
+            query_embedding=None,
+            query=request.query,
+            filters=filters,
+        )
+        self.assertIsNone(filters.max_price)
+        self.assertEqual(
+            {product.id for product, _ in ranked}, {"laptop-1", "laptop-2"}
+        )
+
+    def test_numeric_budget_including_zero_remains_a_hard_limit(self):
+        products = [
+            make_product("book-free", "Programming Book", 0, "books"),
+            make_product("book-paid", "Programming Book Plus", 500, "books"),
+        ]
+        for budget, expected in [(0, {"book-free"}), (500, {"book-free", "book-paid"})]:
+            with self.subTest(budget=budget):
+                request = RecommendRequest(query="books", max_price=budget)
+                filters = resolve_filters(request, products)
+                ranked = rank_products(
+                    products=products,
+                    product_embeddings=None,
+                    query_embedding=None,
+                    query=request.query,
+                    filters=filters,
+                )
+                self.assertEqual({product.id for product, _ in ranked}, expected)
+
     def test_keyword_search_keeps_budget_and_category_filters(self):
         products = [
             make_product("laptop-1", "Programming Laptop", 50000),
@@ -108,16 +152,12 @@ class CatalogGroundedAnswerTests(unittest.TestCase):
 
     def test_missing_product_fact_is_reported_as_unknown(self):
         with patch.dict("os.environ", {}, clear=True):
-            answer = answer_question(
-                self.product, "What is the warranty period?"
-            )
+            answer = answer_question(self.product, "What is the warranty period?")
         self.assertEqual(answer, UNKNOWN_ANSWER)
 
     def test_unrecognized_question_does_not_invent_an_answer_without_api_key(self):
         with patch.dict("os.environ", {}, clear=True):
-            answer = answer_question(
-                self.product, "Is it suitable for a long commute?"
-            )
+            answer = answer_question(self.product, "Is it suitable for a long commute?")
         self.assertEqual(answer, UNKNOWN_ANSWER)
 
     def test_model_selected_field_is_checked_against_product_record(self):

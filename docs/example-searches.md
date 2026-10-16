@@ -11,6 +11,10 @@ Set the query, category, and maximum price, then click **Find recommendations**.
 | Different category | `headphones for music` | Headphones | 5000 | Only headphones costing at most 5,000. |
 | Budget change | Repeat the smartphone search above | Smartphone | 15000 | Resubmitted results obey the lower price limit; fewer products may qualify. |
 | No matches | `books` | Books | 1 | Empty results and a no-match message showing the candidate count after category and budget filters; no over-budget alternatives. |
+| Absent product | `Perfumes` | Any category | Blank | No matches; no laptops, lotions, or other substitutes. |
+| Non-tech product | `Hair Oil` | Any category | Blank | Only the five Light Hair Oil catalog records. |
+| Non-tech product | `Lotion` | Any category | Blank | Only the five Everyday Lotion catalog records. |
+| Partial word overlap | `fresh milk` or `phone case` | Any category | Blank | No matches; shampoo and phones do not satisfy these requests. |
 
 To demonstrate a category change, replace the laptop query and filters with the headphones example, then submit again. Update the query too: leaving an explicit category in the query can conflict with a different dropdown choice.
 

@@ -4,7 +4,7 @@ from app.catalog import Product
 
 
 def _display_attribute_value(value: Any) -> str | None:
-    """Turn JSON-compatible attribute values into readable search text."""
+    """Flatten nested attributes for search, skipping missing values."""
     if value is None:
         return None
     if isinstance(value, bool):
@@ -29,12 +29,11 @@ def _display_attribute_value(value: Any) -> str | None:
 
 
 def _attribute_label(key: str) -> str:
-    """Make catalog attribute keys readable without category-specific rules."""
     return " ".join(key.replace("_", " ").replace("-", " ").split())
 
 
 def build_product_text(product: Product) -> str:
-    """Build deterministic embedding text from shared fields and any attributes."""
+    """Keep field order stable so embedding caches can be reused."""
     parts = [
         f"Product: {product.title}",
         f"Category: {product.category}",

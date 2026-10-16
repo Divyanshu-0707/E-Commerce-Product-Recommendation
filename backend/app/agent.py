@@ -14,7 +14,6 @@ from app.agent_tools import (
 from app.catalog import Product
 from app.embeddings import ProductEmbeddingModel
 
-
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(ENV_FILE)
 
@@ -153,9 +152,7 @@ def _run_tool(
 ) -> dict:
     """Run only the catalog tools explicitly allowed by this application."""
     if tool_name == "search_products":
-        allowed_arguments = {
-            "query", "category", "max_price", "attribute_filters"
-        }
+        allowed_arguments = {"query", "category", "max_price", "attribute_filters"}
         if set(arguments) - allowed_arguments:
             return {"error": "The search tool received unsupported filters."}
 
@@ -219,9 +216,7 @@ def run_agent(
 ) -> str:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise RuntimeError(
-            "GROQ_API_KEY is missing. Add it to backend/.env."
-        )
+        raise RuntimeError("GROQ_API_KEY is missing. Add it to backend/.env.")
 
     model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
     client = OpenAI(
@@ -266,8 +261,10 @@ def run_agent(
 
         if not tool_calls:
             answer = assistant_message.content
-            return answer.strip() if answer else (
-                "I couldn't create an answer from the catalog results."
+            return (
+                answer.strip()
+                if answer
+                else ("I couldn't create an answer from the catalog results.")
             )
 
         if tool_rounds >= MAX_TOOL_ROUNDS:
@@ -279,9 +276,7 @@ def run_agent(
 
         tool_rounds += 1
 
-        messages.append(
-            assistant_message.model_dump(exclude_none=True)
-        )
+        messages.append(assistant_message.model_dump(exclude_none=True))
 
         for tool_call in tool_calls:
             try:
@@ -296,7 +291,7 @@ def run_agent(
                     embedding_model=embedding_model,
                     product_embeddings=product_embeddings,
                 )
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 result = {"error": "The model supplied invalid tool arguments."}
 
             messages.append(

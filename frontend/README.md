@@ -16,7 +16,7 @@ Open [the app](http://127.0.0.1:5173/). The API address in `src/App.jsx` is `htt
 
 Enter a request, optionally select a category and budget, and click **Find recommendations**. Changing filters requires submitting again. For no matches, the interface shows the explanation from the last submitted response. Unsubmitted edits do not change that explanation.
 
-Q&A and the agent require Groq credentials on the backend. Search itself does not require those credentials.
+Search and direct catalog-field questions work without Groq credentials. The AI assistant requires Groq; less direct product questions may use it to identify the relevant catalog fields.
 
 ## Checks and build preview
 

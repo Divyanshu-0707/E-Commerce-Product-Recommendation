@@ -1,10 +1,9 @@
-"""Generate a balanced, explicitly fictional multi-category demo catalog."""
+"""Generate the fictional demo catalog."""
 
 import csv
 import json
 import random
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ROOT / "data" / "products.csv"
@@ -13,17 +12,34 @@ PRODUCTS_PER_CATEGORY = 50
 SEED = 20261013
 
 
-# Each category has its own attributes and price range. All names, brands,
-# descriptions, prices, and attribute combinations generated here are demo
-# fixtures and do not describe real products.
+# All generated products and details are fictional.
 CATEGORY_SPECS = {
     "laptop": {
-        "brand": ["Demo Aster", "Demo Northstar", "Demo Pixelworks", "Demo Cedar", "Demo Orbit"],
-        "models": ["Notebook", "Creator Book", "Travel Mate", "Workstation", "Everyday PC", "Studio Slate", "Compact Pro", "Flex Book", "Learning PC", "Field Laptop"],
+        "brand": [
+            "Demo Aster",
+            "Demo Northstar",
+            "Demo Pixelworks",
+            "Demo Cedar",
+            "Demo Orbit",
+        ],
+        "models": [
+            "Notebook",
+            "Creator Book",
+            "Travel Mate",
+            "Workstation",
+            "Everyday PC",
+            "Studio Slate",
+            "Compact Pro",
+            "Flex Book",
+            "Learning PC",
+            "Field Laptop",
+        ],
         "variants": ["Air", "Core", "Plus", "Edge", "Nova"],
         "price": (28999, 169999),
         "attributes": lambda rng: {
-            "processor": rng.choice(["Demo Core 5", "Demo Core 7", "Demo Ryzen 5", "Demo Ryzen 7"]),
+            "processor": rng.choice(
+                ["Demo Core 5", "Demo Core 7", "Demo Ryzen 5", "Demo Ryzen 7"]
+            ),
             "ram_gb": rng.choice([8, 16, 16, 32]),
             "storage_gb": rng.choice([256, 512, 512, 1024]),
             "screen_inches": rng.choice([13.3, 14.0, 15.6, 16.0]),
@@ -31,8 +47,25 @@ CATEGORY_SPECS = {
         },
     },
     "smartphone": {
-        "brand": ["Demo Aster", "Demo Northstar", "Demo Pixelworks", "Demo Cedar", "Demo Orbit"],
-        "models": ["Smartphone", "Camera Phone", "Pocket Phone", "Everyday Phone", "Travel Phone", "Studio Phone", "Compact Phone", "Power Phone", "Flex Phone", "Field Phone"],
+        "brand": [
+            "Demo Aster",
+            "Demo Northstar",
+            "Demo Pixelworks",
+            "Demo Cedar",
+            "Demo Orbit",
+        ],
+        "models": [
+            "Smartphone",
+            "Camera Phone",
+            "Pocket Phone",
+            "Everyday Phone",
+            "Travel Phone",
+            "Studio Phone",
+            "Compact Phone",
+            "Power Phone",
+            "Flex Phone",
+            "Field Phone",
+        ],
         "variants": ["Air", "Core", "Plus", "Edge", "Nova"],
         "price": (6999, 89999),
         "attributes": lambda rng: {
@@ -44,8 +77,25 @@ CATEGORY_SPECS = {
         },
     },
     "headphones": {
-        "brand": ["Demo Sound", "Demo Northstar Audio", "Demo Cedar Audio", "Demo Orbit Sound", "Demo Aster Audio"],
-        "models": ["Over-Ear Headphones", "Studio Headphones", "Travel Headphones", "Wireless Earbuds", "Sport Earbuds", "On-Ear Headphones", "Quiet Headphones", "Daily Earbuds", "Foldable Headphones", "Open-Ear Set"],
+        "brand": [
+            "Demo Sound",
+            "Demo Northstar Audio",
+            "Demo Cedar Audio",
+            "Demo Orbit Sound",
+            "Demo Aster Audio",
+        ],
+        "models": [
+            "Over-Ear Headphones",
+            "Studio Headphones",
+            "Travel Headphones",
+            "Wireless Earbuds",
+            "Sport Earbuds",
+            "On-Ear Headphones",
+            "Quiet Headphones",
+            "Daily Earbuds",
+            "Foldable Headphones",
+            "Open-Ear Set",
+        ],
         "variants": ["Air", "Core", "Plus", "Edge", "Nova"],
         "price": (999, 32999),
         "attributes": lambda rng: {
@@ -57,8 +107,25 @@ CATEGORY_SPECS = {
         },
     },
     "tablet": {
-        "brand": ["Demo Aster", "Demo Northstar", "Demo Pixelworks", "Demo Cedar", "Demo Orbit"],
-        "models": ["Reading Tablet", "Creative Tablet", "Travel Tablet", "Study Tablet", "Media Tablet", "Compact Tablet", "Flex Tablet", "Work Tablet", "Family Tablet", "Field Tablet"],
+        "brand": [
+            "Demo Aster",
+            "Demo Northstar",
+            "Demo Pixelworks",
+            "Demo Cedar",
+            "Demo Orbit",
+        ],
+        "models": [
+            "Reading Tablet",
+            "Creative Tablet",
+            "Travel Tablet",
+            "Study Tablet",
+            "Media Tablet",
+            "Compact Tablet",
+            "Flex Tablet",
+            "Work Tablet",
+            "Family Tablet",
+            "Field Tablet",
+        ],
         "variants": ["Air", "Core", "Plus", "Edge", "Nova"],
         "price": (8999, 99999),
         "attributes": lambda rng: {
@@ -70,51 +137,142 @@ CATEGORY_SPECS = {
         },
     },
     "clothing": {
-        "brand": ["Demo Loom", "Demo Cedar Wear", "Demo Northstar Cloth", "Demo Aster Thread", "Demo Fieldwear"],
-        "models": ["Everyday Shirt", "Weekend T-Shirt", "Light Jacket", "Travel Hoodie", "Classic Trousers", "Relaxed Kurta", "Daily Dress", "Layering Sweater", "Utility Overshirt", "Casual Shorts"],
+        "brand": [
+            "Demo Loom",
+            "Demo Cedar Wear",
+            "Demo Northstar Cloth",
+            "Demo Aster Thread",
+            "Demo Fieldwear",
+        ],
+        "models": [
+            "Everyday Shirt",
+            "Weekend T-Shirt",
+            "Light Jacket",
+            "Travel Hoodie",
+            "Classic Trousers",
+            "Relaxed Kurta",
+            "Daily Dress",
+            "Layering Sweater",
+            "Utility Overshirt",
+            "Casual Shorts",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (399, 8999),
         "attributes": lambda rng: {
             "size": rng.choice(["XS", "S", "M", "L", "XL", "XXL"]),
             "color": rng.choice(["navy", "olive", "sand", "charcoal", "rust", "cream"]),
-            "material": rng.choice(["cotton blend", "linen blend", "recycled polyester", "wool blend"]),
+            "material": rng.choice(
+                ["cotton blend", "linen blend", "recycled polyester", "wool blend"]
+            ),
             "fit": rng.choice(["regular", "relaxed", "slim"]),
             "care": rng.choice(["machine wash cold", "hand wash", "dry clean"]),
         },
     },
     "shoes": {
-        "brand": ["Demo Pace", "Demo Cedar Steps", "Demo Northstar Trail", "Demo Aster Move", "Demo Fieldfoot"],
-        "models": ["Walking Shoes", "Trail Shoes", "Daily Sneakers", "Court Shoes", "Running Shoes", "Slip-On Shoes", "Hiking Boots", "Training Shoes", "Canvas Shoes", "City Sandals"],
+        "brand": [
+            "Demo Pace",
+            "Demo Cedar Steps",
+            "Demo Northstar Trail",
+            "Demo Aster Move",
+            "Demo Fieldfoot",
+        ],
+        "models": [
+            "Walking Shoes",
+            "Trail Shoes",
+            "Daily Sneakers",
+            "Court Shoes",
+            "Running Shoes",
+            "Slip-On Shoes",
+            "Hiking Boots",
+            "Training Shoes",
+            "Canvas Shoes",
+            "City Sandals",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (799, 12999),
         "attributes": lambda rng: {
             "size_in": rng.choice([6, 7, 8, 9, 10, 11]),
             "color": rng.choice(["navy", "olive", "sand", "charcoal", "rust", "cream"]),
-            "upper_material": rng.choice(["mesh", "canvas", "synthetic knit", "vegan leather"]),
+            "upper_material": rng.choice(
+                ["mesh", "canvas", "synthetic knit", "vegan leather"]
+            ),
             "sole": rng.choice(["rubber", "foam", "EVA blend"]),
             "water_resistant": rng.choice([True, False]),
         },
     },
     "home_kitchen": {
-        "brand": ["Demo Hearth", "Demo Cedar Home", "Demo Northstar Living", "Demo Aster House", "Demo Daywell"],
-        "models": ["Storage Set", "Pour-Over Kettle", "Serving Bowl", "Desk Lamp", "Pantry Jar", "Prep Board", "Table Fan", "Water Bottle", "Mixing Set", "Reading Light"],
+        "brand": [
+            "Demo Hearth",
+            "Demo Cedar Home",
+            "Demo Northstar Living",
+            "Demo Aster House",
+            "Demo Daywell",
+        ],
+        "models": [
+            "Storage Set",
+            "Pour-Over Kettle",
+            "Serving Bowl",
+            "Desk Lamp",
+            "Pantry Jar",
+            "Prep Board",
+            "Table Fan",
+            "Water Bottle",
+            "Mixing Set",
+            "Reading Light",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (249, 14999),
         "attributes": lambda rng: {
-            "material": rng.choice(["stainless steel", "ceramic", "bamboo", "borosilicate glass", "recycled plastic"]),
+            "material": rng.choice(
+                [
+                    "stainless steel",
+                    "ceramic",
+                    "bamboo",
+                    "borosilicate glass",
+                    "recycled plastic",
+                ]
+            ),
             "color": rng.choice(["navy", "olive", "sand", "charcoal", "rust", "cream"]),
             "capacity_l": rng.choice([0.5, 0.75, 1.0, 1.5, 2.0]),
             "dishwasher_safe": rng.choice([True, False]),
-            "dimensions_cm": {"width": rng.choice([10, 15, 20, 25]), "height": rng.choice([8, 12, 18, 24])},
+            "dimensions_cm": {
+                "width": rng.choice([10, 15, 20, 25]),
+                "height": rng.choice([8, 12, 18, 24]),
+            },
         },
     },
     "furniture": {
-        "brand": ["Demo Hearth", "Demo Cedar Home", "Demo Northstar Living", "Demo Aster House", "Demo Daywell"],
-        "models": ["Reading Chair", "Writing Desk", "Storage Bench", "Side Table", "Book Shelf", "Dining Chair", "Bedside Table", "Lounge Stool", "Wall Shelf", "Compact Cabinet"],
+        "brand": [
+            "Demo Hearth",
+            "Demo Cedar Home",
+            "Demo Northstar Living",
+            "Demo Aster House",
+            "Demo Daywell",
+        ],
+        "models": [
+            "Reading Chair",
+            "Writing Desk",
+            "Storage Bench",
+            "Side Table",
+            "Book Shelf",
+            "Dining Chair",
+            "Bedside Table",
+            "Lounge Stool",
+            "Wall Shelf",
+            "Compact Cabinet",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (1499, 34999),
         "attributes": lambda rng: {
-            "material": rng.choice(["engineered wood", "bamboo", "steel and wood", "solid pine", "recycled board"]),
+            "material": rng.choice(
+                [
+                    "engineered wood",
+                    "bamboo",
+                    "steel and wood",
+                    "solid pine",
+                    "recycled board",
+                ]
+            ),
             "color": rng.choice(["natural", "walnut", "white", "charcoal", "sage"]),
             "width_cm": rng.choice([40, 60, 80, 100, 120]),
             "height_cm": rng.choice([45, 60, 75, 90, 120]),
@@ -122,51 +280,150 @@ CATEGORY_SPECS = {
         },
     },
     "books": {
-        "brand": ["Demo Leaf Press", "Demo Northstar Books", "Demo Cedar House", "Demo Aster Pages", "Demo Daywell Reads"],
-        "models": ["The Quiet Observatory", "A Map of Small Ideas", "The River Notebook", "Gardens After Rain", "The Curious Workshop", "Letters from Elsewhere", "A Practical Sky", "The Midnight Library Cart", "Patterns of Everyday Life", "The Long Weekend Guide"],
-        "variants": ["Reader Edition", "Illustrated Edition", "Pocket Edition", "Study Edition", "Collector Edition"],
+        "brand": [
+            "Demo Leaf Press",
+            "Demo Northstar Books",
+            "Demo Cedar House",
+            "Demo Aster Pages",
+            "Demo Daywell Reads",
+        ],
+        "models": [
+            "The Quiet Observatory",
+            "A Map of Small Ideas",
+            "The River Notebook",
+            "Gardens After Rain",
+            "The Curious Workshop",
+            "Letters from Elsewhere",
+            "A Practical Sky",
+            "The Midnight Library Cart",
+            "Patterns of Everyday Life",
+            "The Long Weekend Guide",
+        ],
+        "variants": [
+            "Reader Edition",
+            "Illustrated Edition",
+            "Pocket Edition",
+            "Study Edition",
+            "Collector Edition",
+        ],
         "price": (199, 2499),
         "attributes": lambda rng: {
             "format": rng.choice(["paperback", "hardcover", "ebook"]),
-            "genre": rng.choice(["fiction", "science", "history", "self-help", "travel", "craft"]),
+            "genre": rng.choice(
+                ["fiction", "science", "history", "self-help", "travel", "craft"]
+            ),
             "pages": rng.randint(120, 480),
             "language": rng.choice(["English", "Hindi"]),
             "age_group": rng.choice(["adult", "teen", "children"]),
         },
     },
     "sports_fitness": {
-        "brand": ["Demo Pace", "Demo Cedar Active", "Demo Northstar Sport", "Demo Aster Move", "Demo Fieldfit"],
-        "models": ["Yoga Mat", "Training Bands", "Trail Bottle", "Balance Board", "Skipping Rope", "Strength Set", "Cycling Gloves", "Fitness Roller", "Practice Ball", "Hiking Pack"],
+        "brand": [
+            "Demo Pace",
+            "Demo Cedar Active",
+            "Demo Northstar Sport",
+            "Demo Aster Move",
+            "Demo Fieldfit",
+        ],
+        "models": [
+            "Yoga Mat",
+            "Training Bands",
+            "Trail Bottle",
+            "Balance Board",
+            "Skipping Rope",
+            "Strength Set",
+            "Cycling Gloves",
+            "Fitness Roller",
+            "Practice Ball",
+            "Hiking Pack",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (299, 15999),
         "attributes": lambda rng: {
-            "sport": rng.choice(["yoga", "running", "cycling", "strength", "hiking", "team sports"]),
-            "material": rng.choice(["natural rubber", "foam", "polyester blend", "steel", "recycled polymer"]),
+            "sport": rng.choice(
+                ["yoga", "running", "cycling", "strength", "hiking", "team sports"]
+            ),
+            "material": rng.choice(
+                [
+                    "natural rubber",
+                    "foam",
+                    "polyester blend",
+                    "steel",
+                    "recycled polymer",
+                ]
+            ),
             "weight_kg": round(rng.uniform(0.2, 4.0), 2),
             "skill_level": rng.choice(["beginner", "intermediate", "all levels"]),
             "color": rng.choice(["navy", "olive", "sand", "charcoal", "rust", "cream"]),
         },
     },
     "beauty": {
-        "brand": ["Demo Dew", "Demo Cedar Care", "Demo Northstar Glow", "Demo Aster Ritual", "Demo Daywell Skin"],
-        "models": ["Daily Cleanser", "Soft Hand Cream", "Tinted Balm", "Calm Face Mist", "Gentle Body Wash", "Everyday Lotion", "Light Hair Oil", "Simple Lip Color", "Fresh Shampoo", "Evening Moisturizer"],
+        "brand": [
+            "Demo Dew",
+            "Demo Cedar Care",
+            "Demo Northstar Glow",
+            "Demo Aster Ritual",
+            "Demo Daywell Skin",
+        ],
+        "models": [
+            "Daily Cleanser",
+            "Soft Hand Cream",
+            "Tinted Balm",
+            "Calm Face Mist",
+            "Gentle Body Wash",
+            "Everyday Lotion",
+            "Light Hair Oil",
+            "Simple Lip Color",
+            "Fresh Shampoo",
+            "Evening Moisturizer",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (149, 4999),
         "attributes": lambda rng: {
-            "product_type": rng.choice(["cleanser", "moisturizer", "balm", "mist", "wash", "hair care"]),
-            "skin_type": rng.choice(["dry", "oily", "combination", "all types", "not specified"]),
+            "product_type": rng.choice(
+                ["cleanser", "moisturizer", "balm", "mist", "wash", "hair care"]
+            ),
+            "skin_type": rng.choice(
+                ["dry", "oily", "combination", "all types", "not specified"]
+            ),
             "volume_ml": rng.choice([30, 50, 100, 150, 200]),
             "fragrance_free": rng.choice([True, False]),
             "shade": rng.choice(["clear", "warm beige", "soft rose", "not applicable"]),
         },
     },
     "toys_games": {
-        "brand": ["Demo Playfield", "Demo Cedar Toys", "Demo Northstar Play", "Demo Aster Games", "Demo Daywell Kids"],
-        "models": ["Puzzle Set", "Building Tiles", "Story Cards", "Strategy Board Game", "Wooden Blocks", "Pattern Kit", "Adventure Game", "Creative Craft Box", "Memory Match", "Mini Science Set"],
+        "brand": [
+            "Demo Playfield",
+            "Demo Cedar Toys",
+            "Demo Northstar Play",
+            "Demo Aster Games",
+            "Demo Daywell Kids",
+        ],
+        "models": [
+            "Puzzle Set",
+            "Building Tiles",
+            "Story Cards",
+            "Strategy Board Game",
+            "Wooden Blocks",
+            "Pattern Kit",
+            "Adventure Game",
+            "Creative Craft Box",
+            "Memory Match",
+            "Mini Science Set",
+        ],
         "variants": ["Stone", "River", "Meadow", "Dawn", "Cloud"],
         "price": (199, 5999),
         "attributes": lambda rng: {
-            "toy_type": rng.choice(["puzzle", "building", "card game", "board game", "craft", "learning toy"]),
+            "toy_type": rng.choice(
+                [
+                    "puzzle",
+                    "building",
+                    "card game",
+                    "board game",
+                    "craft",
+                    "learning toy",
+                ]
+            ),
             "age_range": rng.choice(["3+", "5+", "8+", "12+"]),
             "material": rng.choice(["wood", "cardboard", "recycled polymer", "fabric"]),
             "player_count": rng.choice([1, 1, 2, 2, 4]),
@@ -199,24 +456,28 @@ def generate_products() -> list[dict[str, str]]:
             brand = spec["brand"][index % len(spec["brand"])]
             attributes = spec["attributes"](rng)
 
-            # Rotate a small number of omitted category details to exercise
-            # the assistant's handling of unavailable catalog information.
+            # Leave some details missing to test unknown answers.
             attr_keys = list(attributes)
             if index % 10 == 9:
                 attributes.pop(attr_keys[(index // 10) % len(attr_keys)])
 
-            price = round(low + ((high - low) * index / (PRODUCTS_PER_CATEGORY - 1)), 2)
+            price_offset = (high - low) * index / (PRODUCTS_PER_CATEGORY - 1)
+            price = round(low + price_offset, 2)
             product_id = f"synthetic-{category}-{index + 1:03d}"
-            products.append({
-                "id": product_id,
-                "title": title,
-                "category": category,
-                "brand": brand,
-                "price": f"{price:.2f}",
-                "currency": "INR",
-                "description": make_description(category, title, attributes),
-                "attributes": json.dumps(attributes, ensure_ascii=False, separators=(",", ":")),
-            })
+            products.append(
+                {
+                    "id": product_id,
+                    "title": title,
+                    "category": category,
+                    "brand": brand,
+                    "price": f"{price:.2f}",
+                    "currency": "INR",
+                    "description": make_description(category, title, attributes),
+                    "attributes": json.dumps(
+                        attributes, ensure_ascii=False, separators=(",", ":")
+                    ),
+                }
+            )
     return products
 
 
@@ -226,7 +487,16 @@ def main() -> None:
     with OUTPUT_PATH.open("w", encoding="utf-8", newline="") as csv_file:
         writer = csv.DictWriter(
             csv_file,
-            fieldnames=["id", "title", "category", "brand", "price", "currency", "description", "attributes"],
+            fieldnames=[
+                "id",
+                "title",
+                "category",
+                "brand",
+                "price",
+                "currency",
+                "description",
+                "attributes",
+            ],
         )
         writer.writeheader()
         writer.writerows(products)
@@ -243,7 +513,9 @@ def main() -> None:
         "generation_seed": SEED,
     }
     METADATA_PATH.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    print(f"Generated {len(products)} synthetic products across {len(CATEGORY_SPECS)} categories.")
+    print(
+        f"Generated {len(products)} synthetic products across {len(CATEGORY_SPECS)} categories."
+    )
 
 
 if __name__ == "__main__":

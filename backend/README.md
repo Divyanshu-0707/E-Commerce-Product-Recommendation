@@ -39,7 +39,7 @@ Never commit a real key. `.gitignore` excludes `.env` files, local environments,
 
 `data/products.csv` holds 600 synthetic products in 12 categories. Restart the backend after changing the catalog. Product text and model name determine the embedding cache filename; changed text selects a new cache. To force rebuilding, stop the backend, remove the generated `product-embeddings-*.npy` files under `backend/.cache/`, and restart.
 
-`POST /recommend` returns `results` and `message`. `message` is null for nonempty results; an empty result includes the applied filter combination or an empty-catalog explanation. Hard constraints are never automatically relaxed.
+`POST /recommend` returns `results` and `message`. `message` is null for nonempty results. Empty results explain whether the catalog is empty, filters excluded the products, or the requested product details could not be matched. Hard constraints are never automatically relaxed.
 
 Feedback appends to `data/feedback.jsonl` and does not change ranking. [Catalog details and rebuild instructions](../docs/synthetic-catalog.md) describe which generated files are overwritten.
 

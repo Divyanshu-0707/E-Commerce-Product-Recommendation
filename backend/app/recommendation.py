@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from pydantic import (
@@ -146,12 +146,158 @@ CATEGORY_ALIASES = {
 }
 
 LEXICAL_STOP_WORDS = {
-    "a", "an", "the", "for", "with", "and", "of", "in",
-    "under", "below", "less", "than", "at", "most", "up",
-    "to", "within", "budget", "maximum", "max", "laptop",
-    "laptops", "kg", "kilogram", "kilograms", "gb", "tb",
-    "ram", "memory", "storage", "ssd", "price",
+    "a",
+    "an",
+    "the",
+    "for",
+    "with",
+    "and",
+    "of",
+    "in",
+    "under",
+    "below",
+    "less",
+    "than",
+    "at",
+    "most",
+    "up",
+    "to",
+    "within",
+    "budget",
+    "maximum",
+    "max",
+    "laptop",
+    "laptops",
+    "kg",
+    "kilogram",
+    "kilograms",
+    "gb",
+    "tb",
+    "ram",
+    "memory",
+    "storage",
+    "ssd",
+    "price",
 }
+
+# Ignore shopping phrases when checking product names.
+SEARCH_FILLER_WORDS = {
+    "a",
+    "an",
+    "the",
+    "for",
+    "with",
+    "and",
+    "of",
+    "in",
+    "to",
+    "at",
+    "i",
+    "me",
+    "my",
+    "you",
+    "your",
+    "please",
+    "want",
+    "need",
+    "buy",
+    "find",
+    "show",
+    "recommend",
+    "looking",
+    "search",
+    "get",
+    "some",
+    "any",
+    "can",
+    "could",
+    "would",
+    "like",
+    "is",
+    "are",
+    "there",
+    "do",
+    "have",
+    "good",
+    "best",
+    "product",
+    "products",
+    "item",
+    "items",
+    "available",
+    "catalog",
+    "all",
+    "few",
+    "list",
+    "suggest",
+    "give",
+    "options",
+}
+
+
+def search_terms(text: str) -> set[str]:
+    """Normalize search words and common plurals."""
+    terms = set()
+    for word in re.findall(r"[^\W_]+", text.casefold()):
+        if word in SEARCH_FILLER_WORDS:
+            continue
+        if word.isdecimal():
+            word = word.lstrip("0") or "0"
+        elif len(word) > 4 and word.endswith("ies"):
+            word = word[:-3] + "y"
+        elif len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+            word = word[:-1]
+        terms.add(word)
+    return terms
+
+
+def query_product_terms(query: str) -> set[str]:
+    """Remove parsed limits and soft preferences from the product request."""
+    for pattern in (WEIGHT_PATTERN, RAM_PATTERN, STORAGE_PATTERN):
+        query = pattern.sub(" ", query)
+    if extract_max_price(query) is not None:
+        query = PRICE_PATTERN.sub(" ", query)
+
+    # Use cases affect ranking, not which product was requested.
+    query = re.sub(
+        r"\b(?:for\s+)?(?:programming|coding|music|work|daily use)\b",
+        " ",
+        query,
+        flags=re.IGNORECASE,
+    )
+    query = re.sub(r"\blightweight\b", "weight", query, flags=re.IGNORECASE)
+    for category, aliases in CATEGORY_ALIASES.items():
+        for alias in sorted(aliases, key=len, reverse=True):
+            query = re.sub(
+                rf"(?<!\w){re.escape(alias)}(?!\w)",
+                category,
+                query,
+                flags=re.IGNORECASE,
+            )
+    return search_terms(query)
+
+
+def product_matches_query(
+    product: Product,
+    query_terms: set[str],
+    filters: ResolvedFilters,
+) -> bool:
+    """Check product words before applying similarity scores."""
+    if not query_terms:
+        return any((filters.category, filters.product_type, filters.brand))
+    # Generated descriptions contain boilerplate that is not product evidence.
+    fields = [product.title, product.category, product.brand or ""]
+    identity_fields = list(fields)
+    for name, value in product.attributes.items():
+        if value is None or value is False:
+            continue
+        fields.extend((str(name), str(value)))
+        # Color and care text alone can match unrelated products.
+        if name not in {"color", "shade", "care"}:
+            identity_fields.extend((str(name), str(value)))
+    product_terms = search_terms(" ".join(fields))
+    identity_terms = search_terms(" ".join(identity_fields))
+    return query_terms <= product_terms and bool(query_terms & identity_terms)
 
 
 def _normalized_phrase(value: str) -> str:
@@ -182,7 +328,7 @@ def extract_max_price(query: str) -> float | None:
         return None
 
     # Avoid treating a weight or storage number as a price.
-    remainder = query[match.end():]
+    remainder = query[match.end() :]
     if re.match(r"\s*(?:kg|kilograms?|g|gb|tb)\b", remainder, re.IGNORECASE):
         return None
 
@@ -232,9 +378,7 @@ def resolve_filters(
     product_types = {
         product.product_type for product in products if product.product_type
     }
-    conditions = {
-        product.condition for product in products if product.condition
-    }
+    conditions = {product.condition for product in products if product.condition}
     brands = {product.brand for product in products if product.brand}
 
     category = request.category
@@ -264,7 +408,8 @@ def resolve_filters(
         brand = _find_catalog_match(query, brands)
 
     max_price = request.max_price
-    if max_price is None:
+    # An explicit null clears the budget; an omitted field uses the query.
+    if "max_price" not in request.model_fields_set:
         max_price = extract_max_price(query)
 
     max_weight_kg = request.max_weight_kg
@@ -292,103 +437,55 @@ def resolve_filters(
     )
 
 
-def _filter_steps(
-    filters: ResolvedFilters,
-) -> list[tuple[str, Callable[[Product], bool]]]:
-    """Build the same exact checks for ranking and no-result diagnostics."""
-    steps: list[tuple[str, Callable[[Product], bool]]] = []
-
+def _filter_checks(product: Product, filters: ResolvedFilters) -> dict[str, bool]:
+    """Check active filters in the order shown in no-match messages."""
+    checks = {}
     if filters.category:
-        value = filters.category
-        steps.append(
-            (
-                f"category '{value}'",
-                lambda product, value=value: product.category.casefold() == value,
-            )
+        checks[f"category '{filters.category}'"] = (
+            product.category.casefold() == filters.category
         )
     if filters.product_type:
-        value = filters.product_type
-        steps.append(
-            (
-                f"product type '{value}'",
-                lambda product, value=value: (product.product_type or "").casefold() == value,
-            )
-        )
+        checks[f"product type '{filters.product_type}'"] = (
+            product.product_type or ""
+        ).casefold() == filters.product_type
     if filters.condition:
-        value = filters.condition
-        steps.append(
-            (
-                f"condition '{value}'",
-                lambda product, value=value: (product.condition or "").casefold() == value,
-            )
-        )
+        checks[f"condition '{filters.condition}'"] = (
+            product.condition or ""
+        ).casefold() == filters.condition
     if filters.brand:
-        value = filters.brand
-        steps.append(
-            (
-                f"brand '{value}'",
-                lambda product, value=value: (product.brand or "").casefold() == value,
-            )
-        )
+        checks[f"brand '{filters.brand}'"] = (
+            product.brand or ""
+        ).casefold() == filters.brand
     if filters.max_price is not None:
-        value = filters.max_price
-        steps.append(
-            (
-                f"maximum price INR {value:g}",
-                lambda product, value=value: product.price <= value,
-            )
+        checks[f"maximum price INR {filters.max_price:g}"] = (
+            product.price <= filters.max_price
         )
     if filters.max_weight_kg is not None:
-        value = filters.max_weight_kg
-        steps.append(
-            (
-                f"maximum weight {value:g} kg",
-                lambda product, value=value: (
-                    product.weight_kg is not None
-                    and product.weight_kg <= value
-                ),
-            )
+        checks[f"maximum weight {filters.max_weight_kg:g} kg"] = (
+            product.weight_kg is not None and product.weight_kg <= filters.max_weight_kg
         )
     if filters.min_ram_gb is not None:
-        value = filters.min_ram_gb
-        steps.append(
-            (
-                f"minimum RAM {value} GB",
-                lambda product, value=value: (
-                    product.ram_gb is not None and product.ram_gb >= value
-                ),
-            )
+        checks[f"minimum RAM {filters.min_ram_gb} GB"] = (
+            product.ram_gb is not None and product.ram_gb >= filters.min_ram_gb
         )
     if filters.min_storage_gb is not None:
-        value = filters.min_storage_gb
-        steps.append(
-            (
-                f"minimum storage {value} GB",
-                lambda product, value=value: (
-                    product.storage_gb is not None
-                    and product.storage_gb >= value
-                ),
-            )
+        checks[f"minimum storage {filters.min_storage_gb} GB"] = (
+            product.storage_gb is not None
+            and product.storage_gb >= filters.min_storage_gb
         )
-
     for name, constraint in filters.attribute_filters.items():
-        steps.append(
-            (
-                f"attribute '{name}'",
-                lambda product, name=name, constraint=constraint: _attribute_constraint_matches(
-                    product, name, constraint
-                ),
-            )
+        checks[f"attribute '{name}'"] = _attribute_constraint_matches(
+            product, name, constraint
         )
-
-    return steps
+    return checks
 
 
 def no_results_message(
     filters: ResolvedFilters,
     products: list[Product] | None = None,
+    query: str | None = None,
 ) -> str:
-    """Describe applied constraints and show how they reduce the catalog."""
+    """Explain no matches without relaxing the filters."""
     details = []
     for label, value in (
         ("category", filters.category),
@@ -405,12 +502,26 @@ def no_results_message(
             details.append(f"{label}: {display}")
 
     for name, constraint in filters.attribute_filters.items():
-        for operator, value in (("=", constraint.eq), (">=", constraint.gte), ("<=", constraint.lte)):
+        for operator, value in (
+            ("=", constraint.eq),
+            (">=", constraint.gte),
+            ("<=", constraint.lte),
+        ):
             if value is not None:
                 details.append(f"{name} {operator} {value}")
 
     if products is not None and not products:
         return "No catalog products are available for this search."
+
+    filter_results = []
+    if products is not None:
+        filter_results = [_filter_checks(product, filters) for product in products]
+    if query is not None and any(all(checks.values()) for checks in filter_results):
+        return (
+            "No catalog products match the requested product details. "
+            "Try a product name or category from the catalog. "
+            "Unrelated products have not been substituted."
+        )
 
     message = (
         "No catalog products match all of these filters: "
@@ -419,15 +530,14 @@ def no_results_message(
     )
 
     if products is not None:
-        remaining = products
+        remaining = filter_results
         counts = [f"{len(products)} total"]
-        for label, matches in _filter_steps(filters):
-            remaining = [product for product in remaining if matches(product)]
+        for label in filter_results[0]:
+            remaining = [checks for checks in remaining if checks[label]]
             counts.append(f"{label}: {len(remaining)}")
             if not remaining:
                 break
-        if counts:
-            message += " Filtering in order: " + " -> ".join(counts) + "."
+        message += " Filtering in order: " + " -> ".join(counts) + "."
 
     return message + " Change one or more filters and search again."
 
@@ -490,7 +600,7 @@ def _attribute_constraint_matches(
     return True
 
 
-def lexical_match_score(query: str, product: Product) -> float:
+def _text_match_score(query: str, product_text: str) -> float:
     query_terms = {
         token
         for token in re.findall(r"[a-z]+", query.casefold())
@@ -498,7 +608,11 @@ def lexical_match_score(query: str, product: Product) -> float:
     }
     if not query_terms:
         return 0.0
+    product_terms = set(re.findall(r"[a-z]+", product_text.casefold()))
+    return len(query_terms & product_terms) / len(query_terms)
 
+
+def lexical_match_score(query: str, product: Product) -> float:
     product_text = " ".join(
         str(value or "")
         for value in (
@@ -512,23 +626,12 @@ def lexical_match_score(query: str, product: Product) -> float:
         )
     ).casefold()
 
-    product_terms = set(re.findall(r"[a-z]+", product_text))
-    return len(query_terms & product_terms) / len(query_terms)
+    return _text_match_score(query, product_text)
 
 
 def keyword_match_score(query: str, product: Product) -> float:
     """Score text overlap across the product record for fallback search."""
-    query_terms = {
-        token
-        for token in re.findall(r"[a-z]+", query.casefold())
-        if token not in LEXICAL_STOP_WORDS
-    }
-    if not query_terms:
-        return 0.0
-
-    product_text = build_product_text(product).casefold()
-    product_terms = set(re.findall(r"[a-z]+", product_text))
-    return len(query_terms & product_terms) / len(query_terms)
+    return _text_match_score(query, build_product_text(product))
 
 
 def rank_products(
@@ -540,11 +643,14 @@ def rank_products(
     limit: int = 10,
 ) -> list[tuple[Product, float]]:
     # Apply exact filters before ranking eligible products.
-    filter_steps = _filter_steps(filters)
+    query_terms = query_product_terms(query)
     eligible_indices = []
 
     for index, product in enumerate(products):
-        if not all(matches(product) for _, matches in filter_steps):
+        if not all(_filter_checks(product, filters).values()):
+            continue
+
+        if not product_matches_query(product, query_terms, filters):
             continue
 
         eligible_indices.append(index)
@@ -553,29 +659,20 @@ def rank_products(
         return []
 
     if product_embeddings is None or query_embedding is None:
-        # Keep recommendations available when the local embedding model cannot load.
+        # Use keyword scores when embeddings are unavailable.
         scores = np.array(
-            [
-                keyword_match_score(query, products[index])
-                for index in eligible_indices
-            ]
+            [keyword_match_score(query, products[index]) for index in eligible_indices]
         )
     else:
         eligible_vectors = product_embeddings[eligible_indices]
         semantic_scores = eligible_vectors @ query_embedding
 
         lexical_scores = np.array(
-            [
-                lexical_match_score(query, products[index])
-                for index in eligible_indices
-            ]
+            [lexical_match_score(query, products[index]) for index in eligible_indices]
         )
 
-        # Keep the existing semantic and keyword ranking when embeddings work.
-        scores = (
-            0.8 * np.clip(semantic_scores, 0.0, 1.0)
-            + 0.2 * lexical_scores
-        )
+        # Blend semantic similarity with keyword overlap.
+        scores = 0.8 * np.clip(semantic_scores, 0.0, 1.0) + 0.2 * lexical_scores
 
     ranked_positions = np.argsort(-scores)[:limit]
 

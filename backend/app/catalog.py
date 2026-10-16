@@ -3,13 +3,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError, computed_field
-
+from pydantic import BaseModel, Field, computed_field
 
 CATALOG_PATH = Path(__file__).resolve().parents[2] / "data" / "products.csv"
 
-# New catalogs have one JSON column for category-specific values. Keep the old
-# laptop layout readable while the rest of the application is migrated.
+# Support both the current catalog and the original laptop CSV.
 CATALOG_COLUMNS = [
     "id",
     "title",
@@ -37,7 +35,7 @@ LEGACY_LAPTOP_COLUMNS = [
 
 
 class Product(BaseModel):
-    """Shared product fields plus category-specific, catalog-provided data."""
+    """A catalog record with category-specific attributes."""
 
     id: str
     title: str
@@ -48,9 +46,7 @@ class Product(BaseModel):
     description: str
     attributes: dict[str, Any] = Field(default_factory=dict)
 
-    # Temporary compatibility accessors keep existing laptop search and UI
-    # code working while later implementation steps move those consumers to
-    # Product.attributes. These are serialized as legacy response keys.
+    # Existing clients still use these top-level laptop fields.
     @computed_field
     @property
     def product_type(self) -> str | None:
@@ -155,17 +151,14 @@ def _read_product_row(
 
     for required in ("id", "title", "category", "price", "description"):
         if not item[required]:
-            raise ValueError(
-                f"Row {row_number}: required field {required!r} is blank"
-            )
+            raise ValueError(f"Row {row_number}: required field {required!r} is blank")
 
+    brand = _optional_text(item["brand"])
     if columns == LEGACY_LAPTOP_COLUMNS:
         attributes: dict[str, Any] = {
             "product_type": _optional_text(item["product_type"]),
             "condition": _optional_text(item["condition"]),
-            "weight_kg": _optional_number(
-                item["weight_kg"], "weight_kg", row_number
-            ),
+            "weight_kg": _optional_number(item["weight_kg"], "weight_kg", row_number),
             "processor": _optional_text(item["processor"]),
             "ram_gb": _optional_integer(item["ram_gb"], "ram_gb", row_number),
             "storage_gb": _optional_integer(
@@ -175,11 +168,9 @@ def _read_product_row(
         attributes = {
             key: value for key, value in attributes.items() if value is not None
         }
-        brand = _optional_text(item["brand"])
         currency = "INR"
     else:
         attributes = _parse_attributes(item["attributes"], row_number)
-        brand = _optional_text(item["brand"])
         currency = item["currency"].upper()
         if not currency:
             raise ValueError(f"Row {row_number}: required field 'currency' is blank")
@@ -197,12 +188,12 @@ def _read_product_row(
                 "attributes": attributes,
             }
         )
-    except (ValueError, ValidationError) as exc:
+    except ValueError as exc:
         raise ValueError(f"Invalid product on row {row_number}: {exc}") from exc
 
 
 def load_products(path: Path = CATALOG_PATH) -> list[Product]:
-    """Load either the shared product CSV format or the legacy laptop CSV."""
+    """Read and validate either catalog format."""
     if not path.exists():
         raise FileNotFoundError(f"Product catalog not found: {path}")
 

@@ -3,6 +3,7 @@ import re
 from typing import Any
 
 from app.catalog import Product
+from app.recommendation import ResolvedFilters
 
 
 def _format_value(value: Any) -> str:
@@ -17,8 +18,7 @@ def _format_value(value: Any) -> str:
 
 def _attribute_label(key: str) -> str:
     return " ".join(
-        part.capitalize()
-        for part in key.replace("_", " ").replace("-", " ").split()
+        part.capitalize() for part in key.replace("_", " ").replace("-", " ").split()
     )
 
 
@@ -57,9 +57,31 @@ def _attribute_reason(
 def _mentioned_attribute_reasons(product: Product, query: str) -> list[str]:
     query_terms = set(re.findall(r"[a-z0-9]+", query.casefold()))
     stop_words = {
-        "a", "an", "the", "and", "or", "for", "with", "of", "in",
-        "is", "does", "have", "has", "show", "find", "looking", "under",
-        "below", "above", "up", "to", "at", "least", "maximum", "minimum",
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "for",
+        "with",
+        "of",
+        "in",
+        "is",
+        "does",
+        "have",
+        "has",
+        "show",
+        "find",
+        "looking",
+        "under",
+        "below",
+        "above",
+        "up",
+        "to",
+        "at",
+        "least",
+        "maximum",
+        "minimum",
     }
     query_terms -= stop_words
 
@@ -78,68 +100,61 @@ def _mentioned_attribute_reasons(product: Product, query: str) -> list[str]:
 def build_reasons(
     product: Product,
     query: str,
-    category: str | None,
-    max_price: float | None,
-    product_type: str | None = None,
-    condition: str | None = None,
-    brand: str | None = None,
-    max_weight_kg: float | None = None,
-    min_ram_gb: int | None = None,
-    min_storage_gb: int | None = None,
-    attribute_filters: dict[str, Any] | None = None,
+    filters: ResolvedFilters,
 ) -> list[str]:
     reasons: list[str] = []
     query_lower = query.casefold()
 
-    if max_price is not None and product.price <= max_price:
+    if filters.max_price is not None and product.price <= filters.max_price:
         reasons.append(
-            f"Within your budget (up to {product.currency} {max_price:,.0f})"
+            f"Within your budget (up to {product.currency} {filters.max_price:,.0f})"
         )
 
-    if category is not None and product.category.casefold() == category:
+    if filters.category is not None and product.category.casefold() == filters.category:
         reasons.append(f"Category: {product.category}")
 
-    if product_type and (product.product_type or "").casefold() == product_type:
+    if (
+        filters.product_type
+        and (product.product_type or "").casefold() == filters.product_type
+    ):
         reasons.append(f"Product type: {product.product_type}")
 
-    if condition and (product.condition or "").casefold() == condition:
+    if filters.condition and (product.condition or "").casefold() == filters.condition:
         reasons.append(f"Condition: {product.condition}")
 
-    if brand and (product.brand or "").casefold() == brand:
+    if filters.brand and (product.brand or "").casefold() == filters.brand:
         reasons.append(f"Brand: {product.brand}")
 
-    if max_weight_kg is not None and product.weight_kg is not None:
-        if product.weight_kg <= max_weight_kg:
+    if filters.max_weight_kg is not None and product.weight_kg is not None:
+        if product.weight_kg <= filters.max_weight_kg:
             reasons.append(
                 f"Weight: {product.weight_kg:g} kg "
-                f"(your limit: {max_weight_kg:g} kg)"
+                f"(your limit: {filters.max_weight_kg:g} kg)"
             )
 
-    if min_ram_gb is not None and product.ram_gb is not None:
-        if product.ram_gb >= min_ram_gb:
+    if filters.min_ram_gb is not None and product.ram_gb is not None:
+        if product.ram_gb >= filters.min_ram_gb:
             reasons.append(
                 f"RAM: {product.ram_gb} GB "
-                f"(minimum requested: {min_ram_gb} GB)"
+                f"(minimum requested: {filters.min_ram_gb} GB)"
             )
 
-    if min_storage_gb is not None and product.storage_gb is not None:
-        if product.storage_gb >= min_storage_gb:
+    if filters.min_storage_gb is not None and product.storage_gb is not None:
+        if product.storage_gb >= filters.min_storage_gb:
             reasons.append(
                 f"Storage: {product.storage_gb} GB "
-                f"(minimum requested: {min_storage_gb} GB)"
+                f"(minimum requested: {filters.min_storage_gb} GB)"
             )
 
-    if attribute_filters:
-        for name, constraint in attribute_filters.items():
-            reason = _attribute_reason(product, name, constraint)
-            if reason:
-                reasons.append(reason)
+    for name, constraint in filters.attribute_filters.items():
+        reason = _attribute_reason(product, name, constraint)
+        if reason:
+            reasons.append(reason)
 
-    # Generic explanations cite only attributes actually present in the product.
     reasons.extend(_mentioned_attribute_reasons(product, query))
 
-    # Keep existing laptop query explanations until those behaviors are migrated.
-    if max_weight_kg is None and any(
+    # Include stored specs for common laptop requests.
+    if filters.max_weight_kg is None and any(
         word in query_lower for word in ("lightweight", "light weight", "portable")
     ):
         if product.weight_kg is not None:
@@ -148,14 +163,14 @@ def build_reasons(
     if any(word in query_lower for word in ("programming", "coding", "developer")):
         if product.processor:
             reasons.append(f"Processor: {product.processor}")
-        if min_ram_gb is None and product.ram_gb is not None:
+        if filters.min_ram_gb is None and product.ram_gb is not None:
             reasons.append(f"RAM: {product.ram_gb} GB")
 
-    if min_ram_gb is None and ("ram" in query_lower or "memory" in query_lower):
+    if filters.min_ram_gb is None and ("ram" in query_lower or "memory" in query_lower):
         if product.ram_gb is not None:
             reasons.append(f"RAM: {product.ram_gb} GB")
 
-    if min_storage_gb is None and (
+    if filters.min_storage_gb is None and (
         "storage" in query_lower or "ssd" in query_lower
     ):
         if product.storage_gb is not None:
