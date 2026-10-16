@@ -22,18 +22,18 @@ The frontend calls port 8000. Browser origins allowed by the backend are `http:/
 
 ## Groq for Q&A and the agent
 
-Create `backend/.env` with your own credentials:
+Direct questions about stored fields work without credentials. For less direct question wording, the backend can use Groq to select relevant catalog fields; the returned answer is still assembled from those validated stored values. The shopping agent requires Groq. Add credentials in `backend/.env` to use these optional model-assisted features:
 
 ```env
 GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-`GROQ_MODEL` is optional; the value shown is the code's default. Restart the backend after configuration changes. `/ask` sends the selected product record and question to Groq. `/assistant` uses catalog tools through Groq. Search and rule-based recommendation reasons do not need a Groq key.
+`GROQ_MODEL` is optional; the value shown is the code's default. Restart the backend after configuration changes. `/ask` uses Groq only to identify candidate fields for questions that do not name a field directly; the backend checks those fields against the selected product and builds the final answer from the record. `/assistant` uses catalog tools through Groq. Search and rule-based recommendation reasons do not need a Groq key.
 
-Without a valid key/service, Q&A and the agent currently fail rather than providing a local answer. AI answers still need factual verification against catalog records.
+Without a key or when the service is unavailable, direct catalog questions still work, while unsupported or absent facts receive an unavailable answer. The agent requires a working Groq service.
 
-Never commit a real key. The current `.gitignore` entries are commented out and do not protect `backend/.env`; check files explicitly before staging changes.
+Never commit a real key. `.gitignore` excludes `.env` files, local environments, embedding caches, and feedback data; check files explicitly before staging changes.
 
 ## Catalog, embeddings, and feedback
 

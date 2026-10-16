@@ -2,10 +2,10 @@
 
 ## Before presenting
 
-- Start the backend and frontend using the project setup instructions. Allow the embedding model to finish loading before searching.
+- Start the backend and frontend using the project setup instructions. If the embedding model is unavailable, the backend uses keyword-only search.
 - Open `http://127.0.0.1:5173/`. Confirm `http://127.0.0.1:8000/health` returns `{"status":"ok"}`.
 - Use the inputs in [Example searches](example-searches.md).
-- If presenting Q&A or the agent, configure `GROQ_API_KEY` in `backend/.env`, restart the backend, and try a question beforehand. Keep credentials off the projector. Without a key, explain that this portion is unavailable.
+- If presenting less direct Q&A wording or the agent, configure `GROQ_API_KEY` in `backend/.env`, restart the backend, and try it beforehand. Direct questions about stored fields work without a key. Keep credentials off the projector.
 
 ## 0:00–0:25: Introduce the problem
 
@@ -29,11 +29,11 @@ Use `smartphone with at least 8 GB RAM`, choose **Smartphone**, set the maximum 
 
 ## 1:40–2:10: Ask a catalog question
 
-If Groq is configured, ask a smartphone result `How much RAM does this product have?` and compare the answer with its attributes. Then ask about a warranty when none is recorded.
+Ask a smartphone result `How much RAM does this product have?` and compare the answer with its attributes. Then ask about a warranty when none is recorded. Direct field questions use the catalog and do not need Groq.
 
-“The model receives the selected catalog record. It should say the information is unavailable when a fact is missing. We still need broader checks of generated answers.”
+“The answer comes from the selected product's stored fields. If the catalog has no warranty value, the assistant reports that it is unavailable. Less direct questions can use Groq to select fields, and the backend checks those fields before answering.”
 
-If Groq is unavailable, show the stored attributes and state that live Q&A requires the API key. Do not present an invented response as a live answer.
+If Groq is unavailable, direct questions about stored fields still work. The optional assistant panel requires Groq. Do not present an invented response as a live answer.
 
 ## 2:10–2:35: Show a no-result case
 

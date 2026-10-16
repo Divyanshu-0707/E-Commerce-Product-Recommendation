@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from pydantic import (
@@ -292,8 +292,103 @@ def resolve_filters(
     )
 
 
-def no_results_message(filters: ResolvedFilters) -> str:
-    """Describe the applied combination, without guessing which filter caused it."""
+def _filter_steps(
+    filters: ResolvedFilters,
+) -> list[tuple[str, Callable[[Product], bool]]]:
+    """Build the same exact checks for ranking and no-result diagnostics."""
+    steps: list[tuple[str, Callable[[Product], bool]]] = []
+
+    if filters.category:
+        value = filters.category
+        steps.append(
+            (
+                f"category '{value}'",
+                lambda product, value=value: product.category.casefold() == value,
+            )
+        )
+    if filters.product_type:
+        value = filters.product_type
+        steps.append(
+            (
+                f"product type '{value}'",
+                lambda product, value=value: (product.product_type or "").casefold() == value,
+            )
+        )
+    if filters.condition:
+        value = filters.condition
+        steps.append(
+            (
+                f"condition '{value}'",
+                lambda product, value=value: (product.condition or "").casefold() == value,
+            )
+        )
+    if filters.brand:
+        value = filters.brand
+        steps.append(
+            (
+                f"brand '{value}'",
+                lambda product, value=value: (product.brand or "").casefold() == value,
+            )
+        )
+    if filters.max_price is not None:
+        value = filters.max_price
+        steps.append(
+            (
+                f"maximum price INR {value:g}",
+                lambda product, value=value: product.price <= value,
+            )
+        )
+    if filters.max_weight_kg is not None:
+        value = filters.max_weight_kg
+        steps.append(
+            (
+                f"maximum weight {value:g} kg",
+                lambda product, value=value: (
+                    product.weight_kg is not None
+                    and product.weight_kg <= value
+                ),
+            )
+        )
+    if filters.min_ram_gb is not None:
+        value = filters.min_ram_gb
+        steps.append(
+            (
+                f"minimum RAM {value} GB",
+                lambda product, value=value: (
+                    product.ram_gb is not None and product.ram_gb >= value
+                ),
+            )
+        )
+    if filters.min_storage_gb is not None:
+        value = filters.min_storage_gb
+        steps.append(
+            (
+                f"minimum storage {value} GB",
+                lambda product, value=value: (
+                    product.storage_gb is not None
+                    and product.storage_gb >= value
+                ),
+            )
+        )
+
+    for name, constraint in filters.attribute_filters.items():
+        steps.append(
+            (
+                f"attribute '{name}'",
+                lambda product, name=name, constraint=constraint: _attribute_constraint_matches(
+                    product, name, constraint
+                ),
+            )
+        )
+
+    return steps
+
+
+def no_results_message(
+    filters: ResolvedFilters,
+    products: list[Product] | None = None,
+) -> str:
+    """Describe applied constraints and show how they reduce the catalog."""
     details = []
     for label, value in (
         ("category", filters.category),
@@ -314,13 +409,27 @@ def no_results_message(filters: ResolvedFilters) -> str:
             if value is not None:
                 details.append(f"{name} {operator} {value}")
 
-    if not details:
+    if products is not None and not products:
         return "No catalog products are available for this search."
-    return (
+
+    message = (
         "No catalog products match all of these filters: "
-        + "; ".join(details)
-        + ". Try changing one or more filters."
+        + ("; ".join(details) if details else "no explicit filters")
+        + "."
     )
+
+    if products is not None:
+        remaining = products
+        counts = [f"{len(products)} total"]
+        for label, matches in _filter_steps(filters):
+            remaining = [product for product in remaining if matches(product)]
+            counts.append(f"{label}: {len(remaining)}")
+            if not remaining:
+                break
+        if counts:
+            message += " Filtering in order: " + " -> ".join(counts) + "."
+
+    return message + " Change one or more filters and search again."
 
 
 _MISSING_ATTRIBUTE = object()
@@ -431,41 +540,12 @@ def rank_products(
     limit: int = 10,
 ) -> list[tuple[Product, float]]:
     # Apply exact filters before ranking eligible products.
+    filter_steps = _filter_steps(filters)
     eligible_indices = []
 
     for index, product in enumerate(products):
-        if any(
-            not _attribute_constraint_matches(product, name, constraint)
-            for name, constraint in filters.attribute_filters.items()
-        ):
+        if not all(matches(product) for _, matches in filter_steps):
             continue
-        if filters.category and product.category.casefold() != filters.category:
-            continue
-        if (
-            filters.product_type
-            and (product.product_type or "").casefold() != filters.product_type
-        ):
-            continue
-        if (
-            filters.condition
-            and (product.condition or "").casefold() != filters.condition
-        ):
-            continue
-        if filters.brand and (product.brand or "").casefold() != filters.brand:
-            continue
-        if filters.max_price is not None and product.price > filters.max_price:
-            continue
-
-        # Unknown measurements cannot satisfy a numeric filter.
-        if filters.max_weight_kg is not None:
-            if product.weight_kg is None or product.weight_kg > filters.max_weight_kg:
-                continue
-        if filters.min_ram_gb is not None:
-            if product.ram_gb is None or product.ram_gb < filters.min_ram_gb:
-                continue
-        if filters.min_storage_gb is not None:
-            if product.storage_gb is None or product.storage_gb < filters.min_storage_gb:
-                continue
 
         eligible_indices.append(index)
 

@@ -115,7 +115,11 @@ def recommend(body: RecommendRequest, request: Request):
     )
 
     return {
-        "message": no_results_message(filters) if not ranked else None,
+        "message": (
+            no_results_message(filters, request.app.state.products)
+            if not ranked
+            else None
+        ),
         "results": [
             {
                 "product": product,

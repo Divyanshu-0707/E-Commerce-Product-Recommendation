@@ -45,7 +45,7 @@ Hard filters run before ranking. A highly similar item above the budget is exclu
 
 ## Answers and agent tools
 
-Recommendation reasons use ordinary Python rules and do not call an LLM. Product Q&A sends one selected product record to Groq with instructions to use only that record. The assistant can call catalog search, two-product comparison, and product-detail tools, with a six-round tool limit. Q&A and the agent require credentials; generated answers have no independent factual validator.
+Recommendation reasons use ordinary Python rules and do not call an LLM. Direct product questions are resolved from stored fields locally. For less direct wording, optional Groq assistance may select candidate field names, but the backend validates those names and constructs the final answer from the product record. Missing or unrecognized facts are reported as unavailable. The shopping agent uses catalog search, two-product comparison, and product-detail tools through Groq, with a six-round tool limit.
 
 ## Current limits
 
@@ -53,7 +53,8 @@ Recommendation reasons use ordinary Python rules and do not call an LLM. Product
 - Category aliases cover common phrases such as phone, smartphones, and home kitchen; arbitrary wording is still limited. Explicit category controls take precedence.
 - Filters update results after form submission, not immediately on control changes.
 - If model setup or query embedding fails, recommendations use keyword-only ranking. This keeps search available offline but reduces matching to words found in the catalog record.
-- Empty results include the resolved filter combination. The message does not claim which individual filter independently caused the failure or relax constraints automatically.
-- Correct filtering does not establish semantic ranking quality or the accuracy of generated answers.
+- Empty-result messages show the catalog count after each applied hard filter, in order. The system does not relax constraints automatically.
+- Correct filtering does not establish semantic ranking quality, and optional model-assisted field selection can still misunderstand less direct wording.
+- There is no calibrated minimum relevance cutoff, so a weakly relevant product can still be returned when it satisfies the hard filters.
 
 Use [Example searches](example-searches.md) to repeat a search.

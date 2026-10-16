@@ -10,7 +10,7 @@ Set the query, category, and maximum price, then click **Find recommendations**.
 | Numeric requirement | `smartphone with at least 8 GB RAM` | Smartphone | 30000 | Only smartphones costing at most 30,000 with at least 8 GB RAM. |
 | Different category | `headphones for music` | Headphones | 5000 | Only headphones costing at most 5,000. |
 | Budget change | Repeat the smartphone search above | Smartphone | 15000 | Resubmitted results obey the lower price limit; fewer products may qualify. |
-| No matches | `books` | Books | 1 | Empty results and a no-match message; no over-budget alternatives. |
+| No matches | `books` | Books | 1 | Empty results and a no-match message showing the candidate count after category and budget filters; no over-budget alternatives. |
 
 To demonstrate a category change, replace the laptop query and filters with the headphones example, then submit again. Update the query too: leaving an explicit category in the query can conflict with a different dropdown choice.
 
@@ -20,7 +20,7 @@ Read the reasons beneath a returned product. Compare each claim with its display
 
 ## Product questions
 
-These require a valid `GROQ_API_KEY` in `backend/.env` and a backend restart. Search still works without a Groq key, but the current Q&A and agent do not have a local fallback.
+Direct questions about stored fields work without a Groq key. If a question does not name a field clearly, optional Groq assistance selects candidate fields and the backend checks them against the product record before composing an answer. The shopping agent still requires a valid `GROQ_API_KEY` in `backend/.env`.
 
 1. Find a product and ask `How much RAM does this product have?` in its product question box. The answer should match that product's stored `ram_gb` when present.
 2. Ask `What is the warranty period?` for a record with no warranty field. The expected answer is that the catalog does not provide that information.
