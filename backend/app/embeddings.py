@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.catalog import Product
 from app.search_text import build_product_text
@@ -16,6 +15,9 @@ CACHE_DIR = Path(__file__).resolve().parents[1] / ".cache"
 
 class ProductEmbeddingModel:
     def __init__(self) -> None:
+        # Import the optional model package only when semantic search is used.
+        from sentence_transformers import SentenceTransformer
+
         self.model = SentenceTransformer(MODEL_NAME)
 
     def _cache_path(self, texts: list[str]) -> Path:

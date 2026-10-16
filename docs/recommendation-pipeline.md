@@ -15,7 +15,7 @@ Product feedback -> local JSONL file
 | --- | --- | --- |
 | Load and validate | Read the CSV, reject invalid required fields/prices/IDs, and parse category attributes. | `backend/app/catalog.py` |
 | Build text | Combine title, category, optional brand, price, description, and readable attributes. | `backend/app/search_text.py` |
-| Embed and cache | Use `all-MiniLM-L6-v2` to create normalized 384-dimensional vectors. Cache product vectors in a NumPy file keyed by model name and product text. | `backend/app/embeddings.py` |
+| Embed and cache | Use `all-MiniLM-L6-v2` to create normalized 384-dimensional vectors. Cache product vectors in a NumPy file keyed by model name and product text. If model setup or query embedding fails, use keyword-only ranking instead. | `backend/app/embeddings.py`, `backend/app/main.py` |
 | Resolve constraints | Use explicit request fields first, otherwise infer supported constraints from the query. | `backend/app/recommendation.py` |
 | Filter | Exclude products that violate category, budget, brand, supported numeric constraints, or generic attribute filters. Missing required measurements cannot satisfy numeric filters. | `backend/app/recommendation.py` |
 | Rank | Combine semantic similarity and keyword overlap, then sort eligible products by descending score. | `backend/app/recommendation.py` |
@@ -27,13 +27,17 @@ There is no separate vector database. The runtime index is the product list pair
 
 ## Ranking formula
 
+When embeddings are available, the application uses this hybrid score:
+
 ```text
 semantic = dot(normalized_product_vector, normalized_query_vector)
 keyword = matching_query_terms / total_query_terms
 score = 0.8 * clip(semantic, 0, 1) + 0.2 * keyword
 ```
 
-The dot product of normalized vectors is cosine similarity. Negative semantic similarity is clipped to zero. Keyword overlap uses unique English letter tokens after removing a fixed set of stop words. It searches the title, category, legacy product type/condition, brand, description, and legacy processor field. If no query terms remain, the keyword score is zero. Other attributes appear directly in embedding text; the keyword step does not independently traverse the generic attribute object.
+The dot product of normalized vectors is cosine similarity. Negative semantic similarity is clipped to zero. Keyword overlap uses unique English letter tokens after removing a fixed set of stop words. It searches the title, category, legacy product type/condition, brand, description, and legacy processor field. If no query terms remain, the keyword score is zero. Other attributes appear directly in embedding text; the hybrid keyword step does not independently traverse the generic attribute object.
+
+When embeddings are unavailable, the fallback ranks eligible products by the fraction of query terms found in their catalog text, including stored attributes. Its score is a simple keyword overlap, so it will not match synonyms or related concepts as semantic search can. Hard filters still run before either ranking method.
 
 For example, semantic similarity `0.75` and keyword overlap `0.50` give `0.8 * 0.75 + 0.2 * 0.50 = 0.70`. This is a sorting score, not a calibrated 70% probability of suitability.
 
@@ -48,7 +52,7 @@ Recommendation reasons use ordinary Python rules and do not call an LLM. Product
 - Explicit request fields override corresponding values inferred from text; conflicting inputs are not reconciled automatically.
 - Category aliases cover common phrases such as phone, smartphones, and home kitchen; arbitrary wording is still limited. Explicit category controls take precedence.
 - Filters update results after form submission, not immediately on control changes.
-- Embedding/model failures have no keyword-only fallback. Cached product vectors do not remove the model-loading requirement.
+- If model setup or query embedding fails, recommendations use keyword-only ranking. This keeps search available offline but reduces matching to words found in the catalog record.
 - Empty results include the resolved filter combination. The message does not claim which individual filter independently caused the failure or relax constraints automatically.
 - Correct filtering does not establish semantic ranking quality or the accuracy of generated answers.
 

@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from app.catalog import Product
+from app.search_text import build_product_text
 
 
 class AttributeConstraint(BaseModel):
@@ -406,10 +407,25 @@ def lexical_match_score(query: str, product: Product) -> float:
     return len(query_terms & product_terms) / len(query_terms)
 
 
+def keyword_match_score(query: str, product: Product) -> float:
+    """Score text overlap across the product record for fallback search."""
+    query_terms = {
+        token
+        for token in re.findall(r"[a-z]+", query.casefold())
+        if token not in LEXICAL_STOP_WORDS
+    }
+    if not query_terms:
+        return 0.0
+
+    product_text = build_product_text(product).casefold()
+    product_terms = set(re.findall(r"[a-z]+", product_text))
+    return len(query_terms & product_terms) / len(query_terms)
+
+
 def rank_products(
     products: list[Product],
-    product_embeddings: np.ndarray,
-    query_embedding: np.ndarray,
+    product_embeddings: np.ndarray | None,
+    query_embedding: np.ndarray | None,
     query: str,
     filters: ResolvedFilters,
     limit: int = 10,
@@ -456,27 +472,37 @@ def rank_products(
     if not eligible_indices:
         return []
 
-    eligible_vectors = product_embeddings[eligible_indices]
-    semantic_scores = eligible_vectors @ query_embedding
+    if product_embeddings is None or query_embedding is None:
+        # Keep recommendations available when the local embedding model cannot load.
+        scores = np.array(
+            [
+                keyword_match_score(query, products[index])
+                for index in eligible_indices
+            ]
+        )
+    else:
+        eligible_vectors = product_embeddings[eligible_indices]
+        semantic_scores = eligible_vectors @ query_embedding
 
-    lexical_scores = np.array(
-        [
-            lexical_match_score(query, products[index])
-            for index in eligible_indices
-        ]
-    )
+        lexical_scores = np.array(
+            [
+                lexical_match_score(query, products[index])
+                for index in eligible_indices
+            ]
+        )
 
-    # Blend semantic meaning with exact keyword overlap.
-    hybrid_scores = (
-        0.8 * np.clip(semantic_scores, 0.0, 1.0)
-        + 0.2 * lexical_scores
-    )
-    ranked_positions = np.argsort(-hybrid_scores)[:limit]
+        # Keep the existing semantic and keyword ranking when embeddings work.
+        scores = (
+            0.8 * np.clip(semantic_scores, 0.0, 1.0)
+            + 0.2 * lexical_scores
+        )
+
+    ranked_positions = np.argsort(-scores)[:limit]
 
     results = []
     for position in ranked_positions:
         product_index = eligible_indices[position]
         product = products[product_index]
-        score = float(hybrid_scores[position])
+        score = float(scores[position])
         results.append((product, score))
     return results

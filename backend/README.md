@@ -13,7 +13,7 @@ cd backend
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Wait for application startup to complete. First use may download `sentence-transformers/all-MiniLM-L6-v2`. Product vectors are cached in `backend/.cache/`; the embedding model still needs to load on later starts. No keyword-only fallback is implemented.
+Wait for application startup to complete. First use may download `sentence-transformers/all-MiniLM-L6-v2`. Product vectors are cached in `backend/.cache/`. If the embedding model or a query embedding cannot load, recommendations use keyword-only ranking over the catalog text and attributes.
 
 - [Health](http://127.0.0.1:8000/health)
 - [Interactive API docs](http://127.0.0.1:8000/docs)

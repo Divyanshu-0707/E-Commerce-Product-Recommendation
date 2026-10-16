@@ -13,7 +13,7 @@ from app.recommendation import (
 def search_products_tool(
     query: str,
     products: list[Product],
-    embedding_model: ProductEmbeddingModel,
+    embedding_model: ProductEmbeddingModel | None,
     product_embeddings,
     *,
     category: str | None = None,
@@ -34,7 +34,13 @@ def search_products_tool(
         }
     )
     filters = resolve_filters(request, products)
-    query_embedding = embedding_model.embed_query(query)
+    query_embedding = None
+    if embedding_model is not None:
+        try:
+            query_embedding = embedding_model.embed_query(query)
+        except Exception:
+            # Let the shared ranker use its keyword-only fallback.
+            query_embedding = None
 
     ranked = rank_products(
         products=products,

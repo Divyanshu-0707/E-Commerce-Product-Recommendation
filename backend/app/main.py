@@ -35,12 +35,22 @@ class RecommendResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.products = load_products()
-    app.state.embedding_model = ProductEmbeddingModel()
-    app.state.product_embeddings = app.state.embedding_model.embed_products(
-        app.state.products
-    )
+    app.state.embedding_model = None
+    app.state.product_embeddings = None
 
-    print(f"Loaded {len(app.state.products)} products and their embeddings.")
+    try:
+        embedding_model = ProductEmbeddingModel()
+        product_embeddings = embedding_model.embed_products(app.state.products)
+    except Exception as exc:
+        print(
+            "Embedding model unavailable "
+            f"({type(exc).__name__}); using keyword-only search."
+        )
+    else:
+        app.state.embedding_model = embedding_model
+        app.state.product_embeddings = product_embeddings
+        print(f"Loaded {len(app.state.products)} products and their embeddings.")
+
     yield
 
 
@@ -84,7 +94,16 @@ def catalog_info():
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(body: RecommendRequest, request: Request):
     filters = resolve_filters(body, request.app.state.products)
-    query_embedding = request.app.state.embedding_model.embed_query(body.query)
+    embedding_model = request.app.state.embedding_model
+    query_embedding = None
+    if embedding_model is not None:
+        try:
+            query_embedding = embedding_model.embed_query(body.query)
+        except Exception as exc:
+            print(
+                "Query embedding unavailable "
+                f"({type(exc).__name__}); using keyword-only search."
+            )
 
     ranked = rank_products(
         products=request.app.state.products,

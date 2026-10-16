@@ -148,7 +148,7 @@ def _run_tool(
     tool_name: str,
     arguments: dict,
     products: list[Product],
-    embedding_model: ProductEmbeddingModel,
+    embedding_model: ProductEmbeddingModel | None,
     product_embeddings,
 ) -> dict:
     """Run only the catalog tools explicitly allowed by this application."""
@@ -214,7 +214,7 @@ def _run_tool(
 def run_agent(
     message: str,
     products: list[Product],
-    embedding_model: ProductEmbeddingModel,
+    embedding_model: ProductEmbeddingModel | None,
     product_embeddings,
 ) -> str:
     api_key = os.getenv("GROQ_API_KEY")
